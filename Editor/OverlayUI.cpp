@@ -4,6 +4,7 @@
 #include "ConsoleWindow.h"
 #include "EditorCamera.h"
 #include "EditorLight.h"
+#include "EditorPass.h"
 #include "EditorViewport.h"
 #include "EditorViewport2d.h"
 #include "Global.h"
@@ -247,11 +248,11 @@ namespace ToolKit
           }
 
           ImGui::PopItemWidth();
-          g_app->m_sceneLightingMode = (App::LightMode) lightModeIndx;
+          g_app->m_sceneLightingMode = (EditorLitMode) lightModeIndx;
         }
         else
         {
-          g_app->m_sceneLightingMode = App::EditorLit;
+          g_app->m_sceneLightingMode = EditorLitMode::EditorLit;
         }
 
         ImGui::TableSetColumnIndex(nextItemIndex++);
@@ -522,11 +523,15 @@ namespace ToolKit
         ImGui::PushItemWidth(75);
         EditorViewport2d* editorViewport =
             reinterpret_cast<EditorViewport2d*>(m_owner);
-        static constexpr uint16_t cellSizeStep = 5, gridSizeStep = 0;
+        static constexpr uint16_t cellSizeStep = 5;
         ImGui::InputScalar("Cell Size",
                            ImGuiDataType_U16,
                            &editorViewport->m_gridCellSizeByPixel,
                            &cellSizeStep);
+        editorViewport->m_gridCellSizeByPixel =
+            glm::max((editorViewport->m_gridCellSizeByPixel / cellSizeStep) *
+                         cellSizeStep,
+                     1u);
       };
 
       ImGui::TableSetColumnIndex(nextItemIndex++);

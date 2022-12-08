@@ -9,7 +9,7 @@
 
 namespace ToolKit
 {
-  class Framebuffer;
+
   class TK_API Light : public Entity
   {
    public:
@@ -21,39 +21,35 @@ namespace ToolKit
     void Serialize(XmlDocument* doc, XmlNode* parent) const override;
     void DeSerialize(XmlDocument* doc, XmlNode* parent) override;
 
-    // Shadow operations
-    virtual void InitShadowMap();
-    virtual void UnInitShadowMap();
-    FramebufferPtr GetShadowMapFramebuffer();
-    RenderTargetPtr GetShadowMapRenderTarget();
-    RenderTargetPtr GetShadowMapTempBlurRt();
+    // Shadow
     MaterialPtr GetShadowMaterial();
+    virtual void UpdateShadowCamera();
+    virtual float AffectDistance();
+    virtual void InitShadowMapDepthMaterial();
 
    protected:
-    virtual void InitShadowMapDepthMaterial();
-    void ReInitShadowMap();
+    void UpdateShadowCameraTransform();
 
    public:
     TKDeclareParam(Vec3, Color);
     TKDeclareParam(float, Intensity);
     TKDeclareParam(bool, CastShadow);
-    TKDeclareParam(Vec2, ShadowResolution);
+    TKDeclareParam(float, ShadowRes);
     TKDeclareParam(int, PCFSamples);
     TKDeclareParam(float, PCFRadius);
     TKDeclareParam(float, ShadowThickness);
     TKDeclareParam(float, LightBleedingReduction);
 
-    bool m_isStudioLight = false;
     Mat4 m_shadowMapCameraProjectionViewMatrix;
-    float m_shadowMapCameraFar = 1.0f;
+    float m_shadowMapCameraFar     = 1.0f;
+    Camera* m_shadowCamera         = nullptr;
+    int m_shadowAtlasLayer         = -1;
+    Vec2 m_shadowAtlasCoord        = Vec2(-1.0f);
+    bool m_shadowResolutionUpdated = false;
 
    protected:
-    bool m_shadowMapInitialized           = false;
-    bool m_shadowMapResolutionChanged     = false;
-    MaterialPtr m_shadowMapMaterial       = nullptr;
-    FramebufferPtr m_depthFramebuffer     = nullptr;
-    RenderTargetPtr m_shadowRt            = nullptr;
-    RenderTargetPtr m_shadowMapTempBlurRt = nullptr;
+    bool m_shadowMapResolutionChanged = false;
+    MaterialPtr m_shadowMapMaterial   = nullptr;
   };
 
   class TK_API DirectionalLight : public Light
@@ -64,7 +60,7 @@ namespace ToolKit
 
     EntityType GetType() const override;
 
-    void UpdateShadowMapCamera(Camera* cam, const EntityRawPtrArray& entities);
+    void UpdateShadowFrustum(const EntityRawPtrArray& entities);
     Vec3Array GetShadowFrustumCorners();
 
    private:
@@ -72,6 +68,7 @@ namespace ToolKit
     // bigger, the resolution gets lower.
     void FitEntitiesBBoxIntoShadowFrustum(Camera* lightCamera,
                                           const EntityRawPtrArray& entities);
+
     // Fits view frustum of the camera into shadow map camera frustum. As the
     // view frustum gets bigger, the resolution gets lower.
     void FitViewFrustumIntoLightFrustum(Camera* lightCamera,
@@ -82,16 +79,12 @@ namespace ToolKit
   {
    public:
     PointLight();
-    virtual ~PointLight()
-    {
-    }
+    virtual ~PointLight();
 
     EntityType GetType() const override;
 
-    void InitShadowMap() override;
-    void UpdateShadowMapCamera(Camera* cam);
-
-   protected:
+    void UpdateShadowCamera() override;
+    float AffectDistance() override;
     void InitShadowMapDepthMaterial() override;
 
    public:
@@ -102,15 +95,11 @@ namespace ToolKit
   {
    public:
     SpotLight();
-    virtual ~SpotLight()
-    {
-    }
+    virtual ~SpotLight();
 
     EntityType GetType() const override;
-
-    void UpdateShadowMapCamera(Camera* cam);
-
-   protected:
+    void UpdateShadowCamera() override;
+    float AffectDistance() override;
     void InitShadowMapDepthMaterial() override;
 
    public:

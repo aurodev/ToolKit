@@ -35,6 +35,7 @@ namespace ToolKit
 
     m_settings = settings;
 
+#ifndef TK_GL_ES_3_0
     // If msaa is not supported, do not use
     if (glFramebufferTexture2DMultisampleEXT == nullptr)
     {
@@ -42,6 +43,9 @@ namespace ToolKit
       GetLogger()->Log(
           "Unsupported Extension: glFramebufferTexture2DMultisampleEXT");
     }
+#else
+    m_settings.msaa = 0;
+#endif
 
     // Create framebuffer object
     glGenFramebuffers(1, &m_fboId);
@@ -67,13 +71,13 @@ namespace ToolKit
       glBindRenderbuffer(GL_RENDERBUFFER, m_defaultRboId);
 
       GLenum attachment = GL_DEPTH_ATTACHMENT;
-      GLenum component  = GL_DEPTH_COMPONENT;
+      GLenum component  = GL_DEPTH_COMPONENT24;
       if (m_settings.depthStencil)
       {
-        component  = GL_DEPTH_STENCIL;
+        component  = GL_DEPTH24_STENCIL8;
         attachment = GL_DEPTH_STENCIL_ATTACHMENT;
       }
-#ifndef __EMSCRIPTEN__
+#ifndef TK_GL_ES_3_0
       if (m_settings.msaa > 0)
       {
         glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER,
@@ -83,7 +87,7 @@ namespace ToolKit
                                             m_settings.height);
       }
       else
-#endif
+#endif // TK_GL_ES_3_0
       {
         glRenderbufferStorage(
             GL_RENDERBUFFER, component, m_settings.width, m_settings.height);
@@ -120,9 +124,15 @@ namespace ToolKit
     m_initialized = false;
   }
 
+  bool Framebuffer::Initialized()
+  {
+    return m_initialized;
+  }
+
   void Framebuffer::ReconstructIfNeeded(uint width, uint height)
   {
-    if (m_settings.width != width || m_settings.height != height)
+    if (!m_initialized || m_settings.width != width ||
+        m_settings.height != height)
     {
       UnInit();
       m_settings.width  = width;
@@ -131,9 +141,10 @@ namespace ToolKit
     }
   }
 
-  RenderTarget* Framebuffer::SetAttachment(Attachment atc,
-                                           RenderTarget* rt,
-                                           CubemapFace face)
+  RenderTargetPtr Framebuffer::SetAttachment(Attachment atc,
+                                             RenderTargetPtr rt,
+                                             int layer,
+                                             CubemapFace face)
   {
     GLenum attachment = GL_DEPTH_ATTACHMENT;
     if (IsColorAttachment(atc))
@@ -154,7 +165,7 @@ namespace ToolKit
       return nullptr;
     }
 
-    RenderTarget* oldRt = DetachAttachment(atc);
+    RenderTargetPtr oldRt = DetachAttachment(atc);
 
     GLint lastFBO;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &lastFBO);
@@ -170,9 +181,10 @@ namespace ToolKit
                              rt->m_textureId,
                              0);
     }
-#ifndef __EMSCRIPTEN__
+#ifndef TK_GL_ES_3_0
     else if (rt->m_settings.Msaa > 0 && m_settings.msaa == rt->m_settings.Msaa)
     {
+      // No support for msaa array texture
       glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER,
                                            attachment,
                                            GL_TEXTURE_2D,
@@ -180,10 +192,20 @@ namespace ToolKit
                                            0,
                                            rt->m_settings.Msaa);
     }
-#endif
+#endif // TK_GL_ES_3_0
     else
     {
-      glFramebufferTexture(GL_FRAMEBUFFER, attachment, rt->m_textureId, 0);
+      if (layer != -1)
+      {
+        assert(layer < rt->m_settings.Layers);
+        glFramebufferTextureLayer(
+            GL_FRAMEBUFFER, attachment, rt->m_textureId, 0, layer);
+      }
+      else
+      {
+        glFramebufferTexture2D(
+            GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, rt->m_textureId, 0);
+      }
     }
 
     if (!IsColorAttachment(atc))
@@ -206,7 +228,7 @@ namespace ToolKit
     return oldRt;
   }
 
-  RenderTarget* Framebuffer::GetAttachment(Attachment atc)
+  RenderTargetPtr Framebuffer::GetAttachment(Attachment atc)
   {
     if (IsColorAttachment(atc))
     {
@@ -239,10 +261,10 @@ namespace ToolKit
     }
   }
 
-  RenderTarget* Framebuffer::DetachAttachment(Attachment atc)
+  RenderTargetPtr Framebuffer::DetachAttachment(Attachment atc)
   {
-    RenderTarget* rt  = m_depthAtch;
-    GLenum attachment = GL_DEPTH_ATTACHMENT;
+    RenderTargetPtr rt = m_depthAtch;
+    GLenum attachment  = GL_DEPTH_ATTACHMENT;
     if (IsColorAttachment(atc))
     {
       attachment = GL_COLOR_ATTACHMENT0 + (int) atc;
@@ -261,7 +283,7 @@ namespace ToolKit
 
       // Detach
       glBindFramebuffer(GL_FRAMEBUFFER, m_fboId);
-#ifndef __EMSCRIPTEN__
+#ifndef TK_GL_ES_3_0
       if (rt->m_settings.Msaa > 0 && m_settings.msaa == rt->m_settings.Msaa)
       {
         glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER,
@@ -272,9 +294,9 @@ namespace ToolKit
                                              rt->m_settings.Msaa);
       }
       else
-#endif
+#endif // TK_GL_ES_3_0
       {
-        glFramebufferTexture(GL_FRAMEBUFFER, attachment, 0, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, 0, 0);
       }
 
       if (IsColorAttachment(atc))
@@ -348,8 +370,8 @@ namespace ToolKit
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
-    GLenum colorAttachments[8];
-    int count = 0;
+    GLenum colorAttachments[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    int count                  = 0;
     for (int i = 0; i < m_maxColorAttachmentCount; ++i)
     {
       if (m_colorAtchs[i] != nullptr && m_colorAtchs[i]->m_textureId != 0)
@@ -359,7 +381,14 @@ namespace ToolKit
       }
     }
 
-    glDrawBuffers(count, colorAttachments);
+    if (count == 0)
+    {
+      glDrawBuffers(0, nullptr);
+    }
+    else
+    {
+      glDrawBuffers(count, colorAttachments);
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, lastFBO);
   }

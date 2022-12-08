@@ -498,7 +498,7 @@ namespace ToolKit
 
     void SetWorkspaceDir(TagArgArray tagArgs)
     {
-      TagArgArray::const_iterator pathTag = GetTag("path", tagArgs);
+      TagArgArray::const_iterator pathTag = GetTag(XmlNodePath.data(), tagArgs);
       if (pathTag != tagArgs.end())
       {
         String path     = pathTag->second.front();
@@ -549,11 +549,6 @@ namespace ToolKit
     void SelectAllEffectingLights(TagArgArray tagArgs)
     {
       BoolCheck(tagArgs, &g_app->m_selectEffectingLights);
-    }
-
-    void ShowDepth(TagArgArray tagArgs)
-    {
-      BoolCheck(tagArgs, &g_app->m_showDepth);
     }
 
     // ImGui ripoff. Portable helpers.
@@ -615,7 +610,6 @@ namespace ToolKit
       CreateCommand(g_loadPlugin, LoadPlugin);
       CreateCommand(g_showShadowFrustum, ShowShadowFrustum);
       CreateCommand(g_selectEffectingLights, SelectAllEffectingLights);
-      CreateCommand(g_showDepth, ShowDepth);
     }
 
     ConsoleWindow::~ConsoleWindow()

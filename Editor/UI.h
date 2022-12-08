@@ -25,15 +25,15 @@ namespace ToolKit
      public:
       enum class Type
       {
-        Viewport,
-        Console,
-        InputPopup,
-        Browser,
-        Outliner,
-        Inspector,
-        MaterialInspector,
-        PluginWindow,
-        Viewport2d
+        Viewport     = 0,
+        Console      = 1,
+        InputPopup   = 2,
+        Browser      = 3,
+        Outliner     = 4,
+        Inspector    = 5,
+        UNUSEDSLOT_1 = 6,
+        PluginWindow = 7,
+        Viewport2d   = 8
       };
 
      public:
@@ -49,6 +49,7 @@ namespace ToolKit
       bool IsMoving() const;
       bool MouseHovers() const;
       bool CanDispatchSignals() const; // If active & visible & mouse hovers.
+      bool IsViewport() const;
 
       // System calls.
       virtual void DispatchSignals() const;
@@ -119,6 +120,12 @@ namespace ToolKit
       static void EndCenteredTextButton();
       static void CenteredText(const String& text);
 
+      /**
+       * Can be used to see if ui is using the keyboard for input. Most likely
+       * usage is to check if user typing text to an input field.
+       */
+      static bool IsKeyboardCaptured();
+
      public:
       static bool m_showNewSceneWindow;
       static bool m_imguiSampleWindow;
@@ -138,11 +145,12 @@ namespace ToolKit
 
       static struct Import
       {
-        bool showImportWindow = false;
-        bool overwrite        = false;
-        StringArray files;
-        String subDir;
-        float scale = 1.0f;
+        bool ShowImportWindow = false;
+        bool Overwrite        = false;
+        StringArray Files;
+        String SubDir;
+        float Scale                  = 1.0f;
+        class FolderView* ActiveView = nullptr;
       } ImportData;
 
       static struct SearchFile
@@ -198,6 +206,32 @@ namespace ToolKit
       static TexturePtr m_prefabIcn;
       static TexturePtr m_buildIcn;
       static TexturePtr m_addIcon;
+      static TexturePtr m_sphereIcon;
+      static TexturePtr m_cubeIcon;
+      static TexturePtr m_shaderBallIcon;
+
+      struct AnchorPresetImages
+      {
+        static constexpr uint presetCount      = 16;
+        const char* m_presetNames[presetCount] = {"Top Left",
+                                                  "Top Middle",
+                                                  "Top Right",
+                                                  "Top Horizontal",
+                                                  "Middle Left",
+                                                  "Middle Middle",
+                                                  "Middle Right",
+                                                  "Middle Horizontal",
+                                                  "Bottom Left",
+                                                  "Bottom Middle",
+                                                  "Bottom Right",
+                                                  "Bottom Horizontal",
+                                                  "Vertical Left",
+                                                  "Vertical Middle",
+                                                  "Vertical Right",
+                                                  "Whole"};
+        TexturePtr m_presetImages[presetCount] = {};
+      };
+      static AnchorPresetImages m_anchorPresetIcons;
     };
 
   } // namespace Editor

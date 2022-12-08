@@ -31,12 +31,14 @@ namespace ToolKit
 
     void GlDebugReportInit()
     {
+      /* TODO
       if (glDebugMessageCallback != NULL)
       {
         glEnable(GL_DEBUG_OUTPUT);
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
         glDebugMessageCallback(&GLDebugMessageCallback, nullptr);
       }
+      */
 
       GlErrorReporter::Report = [](const std::string& msg) -> void {
         static byte state = g_app->m_showGraphicsApiErrors;
@@ -49,7 +51,7 @@ namespace ToolKit
         if (state != g_app->m_showGraphicsApiErrors)
         {
           state = g_app->m_showGraphicsApiErrors;
-
+          /* TODO
           if (state == 1)
           {
             glDebugMessageControl(
@@ -67,6 +69,7 @@ namespace ToolKit
             glDebugMessageControl(
                 GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, NULL, GL_TRUE);
           }
+          */
         }
 
         if (g_app->m_showGraphicsApiErrors)
@@ -103,15 +106,20 @@ namespace ToolKit
                            "UILayout.ini",
                            "Engine.settings"};
 
-      String cfgPath    = ConcatPaths({String(appData), "ToolKit", "Config"});
-      String targetFile = ConcatPaths({cfgPath, files[0]});
+      String cfgPath = ConcatPaths({String(appData), "ToolKit", "Config"});
 
       // Create ToolKit Configs.
-      if (!CheckSystemFile(targetFile))
+      bool doesConfigFolderExists = true;
+      if (!CheckSystemFile(cfgPath))
       {
-        if (std::filesystem::create_directories(cfgPath))
+        doesConfigFolderExists = std::filesystem::create_directories(cfgPath);
+      }
+      if (doesConfigFolderExists)
+      {
+        for (int i = 0; i < 4; i++)
         {
-          for (int i = 0; i < 4; i++)
+          String targetFile = ConcatPaths({cfgPath, files[i]});
+          if (!CheckSystemFile(targetFile))
           {
             std::filesystem::copy(
                 ConcatPaths({ConfigPath(), files[i]}),
@@ -163,17 +171,30 @@ namespace ToolKit
       }
       else
       {
+#ifdef TK_GL_CORE_3_2
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
                             SDL_GL_CONTEXT_PROFILE_CORE);
 
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+#elif defined(TK_GL_ES_3_0)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
+                            SDL_GL_CONTEXT_PROFILE_ES);
+
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#endif // TK_GL_CORE_3_2
 
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
         SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+
+        // SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 16);
+        // SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 16);
+        // SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 16);
+        // SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 16);
 
         if (g_settings.Graphics.MSAA > 0)
         {
@@ -202,13 +223,19 @@ namespace ToolKit
         else
         {
           g_context = SDL_GL_CreateContext(g_window);
+
           if (g_context == nullptr)
           {
             g_running = false;
           }
           else
           {
-            //  Init glew
+
+#ifdef TK_DEBUG
+            GlDebugReportInit();
+#endif
+
+            // Init glew
             glewExperimental = true;
             GLenum err       = glewInit();
             if (GLEW_OK != err)
@@ -216,10 +243,6 @@ namespace ToolKit
               g_running = false;
               return;
             }
-
-#ifdef TK_DEBUG
-            GlDebugReportInit();
-#endif
 
             // Init Main
             // Override SceneManager.
@@ -229,11 +252,9 @@ namespace ToolKit
 
             // Set defaults
             SDL_GL_SetSwapInterval(0);
-            glPointSize(5.0f);
 
             glEnable(GL_CULL_FACE);
             glEnable(GL_DEPTH_TEST);
-            glEnable(GL_FRAMEBUFFER_SRGB);
 
             // Init app
             g_app = new App(g_settings.Window.Width, g_settings.Window.Height);
@@ -262,9 +283,6 @@ namespace ToolKit
 
     void ProcessEvent(const SDL_Event& e)
     {
-      //  If message doesn't meant to be processed in imgui, set this to true.
-      bool skipImgui = false;
-
       if (e.type == SDL_WINDOWEVENT)
       {
         if (e.window.event == SDL_WINDOWEVENT_RESIZED)
@@ -285,8 +303,7 @@ namespace ToolKit
 
       if (e.type == SDL_DROPFILE)
       {
-        UI::ImportData.files.push_back(e.drop.file);
-        UI::ImportData.showImportWindow = true;
+        g_app->ManageDropfile(e.drop.file);
       }
 
       if (e.type == SDL_QUIT)
@@ -294,44 +311,7 @@ namespace ToolKit
         g_app->OnQuit();
       }
 
-      if (e.type == SDL_KEYDOWN)
-      {
-        switch (e.key.keysym.sym)
-        {
-        case SDLK_F5:
-          if (g_app->m_gameMod == GameMod::Playing ||
-              g_app->m_gameMod == GameMod::Paused)
-          {
-            g_app->SetGameMod(GameMod::Stop);
-          }
-          else
-          {
-            g_app->SetGameMod(GameMod::Playing);
-          }
-          break;
-        case SDLK_ESCAPE:
-          if (g_app->m_gameMod != GameMod::Playing &&
-              g_app->m_gameMod != GameMod::Paused)
-          {
-            g_app->OnQuit();
-          }
-          break;
-        case SDLK_s:
-          if (SDL_GetModState() & KMOD_LCTRL)
-          {
-            g_app->OnSaveScene();
-            skipImgui = true;
-          }
-          break;
-        default:
-          break;
-        }
-      }
-
-      if (!skipImgui)
-      {
-        ImGui_ImplSDL2_ProcessEvent(&e);
-      }
+      ImGui_ImplSDL2_ProcessEvent(&e);
     }
 
     struct Timing
@@ -368,12 +348,15 @@ namespace ToolKit
         timer->currentTime = GetElapsedMilliSeconds();
         if (timer->currentTime > timer->lastTime + timer->deltaTime)
         {
-          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT |
-                  GL_STENCIL_BUFFER_BIT);
-
           g_app->Frame(timer->currentTime - timer->lastTime);
-          ClearPool(); // Clear after consumption.
+
+          // Update Present imgui windows.
+          ImGui::UpdatePlatformWindows();
+          ImGui::RenderPlatformWindowsDefault();
+          SDL_GL_MakeCurrent(g_window, g_context);
           SDL_GL_SwapWindow(g_window);
+
+          ClearPool(); // Clear after consumption.
 
           timer->frameCount++;
           timer->timeAccum += timer->currentTime - timer->lastTime;

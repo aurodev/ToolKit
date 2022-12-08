@@ -5,12 +5,14 @@
 	<include name = "camera.shader" />
 	<include name = "AO.shader" />
 	<uniform name = "CamData" />
+	<uniform name = "LightingOnly" />
 	<source>
 	<!--
 		#version 300 es
 		precision highp float;
 
 		uniform sampler2D s_texture0;
+		uniform int LightingOnly;
 
 		in vec3 v_pos;
 		in vec3 v_normal;
@@ -24,6 +26,10 @@
 			if(objectColor.a < 0.1f){
 				discard;
 			}
+			if (LightingOnly == 1)
+			{
+				objectColor.xyz = vec3(1.0);
+			}
 
 			vec3 n = normalize(v_normal);
 			vec3 e = normalize(CamData.pos - v_pos);
@@ -32,9 +38,9 @@
 
 			irradiance += IblIrradiance(n);
 
-			float ambientOcclusion = AmbientOcclusion();
+			// float ambientOcclusion = AmbientOcclusion();
 
-			fragColor = vec4(ambientOcclusion * irradiance, 1.0) * objectColor;
+			fragColor = vec4(irradiance, 1.0) * objectColor;
 		}
 	-->
 	</source>

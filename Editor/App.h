@@ -1,12 +1,12 @@
 #pragma once
 
 #include "ConsoleWindow.h"
+#include "EditorPass.h"
 #include "EditorScene.h"
 #include "FolderWindow.h"
 #include "Global.h"
 #include "Grid.h"
 #include "Light.h"
-#include "MaterialInspector.h"
 #include "OutlinerWindow.h"
 #include "PluginWindow.h"
 #include "PropInspector.h"
@@ -24,7 +24,6 @@ namespace ToolKit
   {
 
     typedef std::shared_ptr<class Anchor> AnchorPtr;
-
     typedef std::function<void(int)> SysCommandDoneCallback;
     typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)>
         SysCommandExecutionFn;
@@ -48,6 +47,7 @@ namespace ToolKit
       void CompilePlugin();
       EditorScenePtr GetCurrentScene();
       void SetCurrentScene(const EditorScenePtr& scene);
+      void FocusEntity(Entity* entity);
 
       /**
        * Executes the given system command.
@@ -76,6 +76,7 @@ namespace ToolKit
       // Import facilities.
       int Import(const String& fullPath, const String& subDir, bool overwrite);
       bool CanImport(const String& fullPath);
+      void ManageDropfile(const StringView& fileName);
 
       // Workspace.
       void OpenScene(const String& fullPath);
@@ -84,16 +85,16 @@ namespace ToolKit
       void ApplyProjectSettings(bool setDefaults);
       void OpenProject(const Project& project);
       void PackResources();
+      void SaveAllResources();
 
       // UI
       Window* GetActiveWindow();
       EditorViewport* GetActiveViewport();
       EditorViewport* GetViewport(const String& name);
       ConsoleWindow* GetConsole();
-      FolderWindow* GetAssetBrowser();
+      FolderWindowRawPtrArray GetAssetBrowsers();
       OutlinerWindow* GetOutliner();
       PropInspector* GetPropInspector();
-      MaterialInspector* GetMaterialInspector();
 
       template <typename T>
       T* GetWindow(const String& name)
@@ -113,14 +114,25 @@ namespace ToolKit
         return nullptr;
       }
 
-      // Quick selected render implementation.
-      void RenderSelected(EditorViewport* viewport,
-                          EntityRawPtrArray selecteds);
-
-      void RenderGizmo(EditorViewport* viewport, Gizmo* gizmo);
-      void RenderAnchor(EditorViewport* viewport, AnchorPtr anchor);
-      void RenderComponentGizmo(EditorViewport* viewport,
-                                EntityRawPtrArray selecteds);
+      template <typename T>
+      std::vector<T*> GetAllWindows(const String& name)
+      {
+        std::vector<T*> list;
+        for (Window* wnd : m_windows)
+        {
+          T* casted = dynamic_cast<T*>(wnd);
+          if (casted)
+          {
+            String nameWithoutId =
+                casted->m_name.substr(0, casted->m_name.find_first_of('#'));
+            if (nameWithoutId == name)
+            {
+              list.push_back(casted);
+            }
+          }
+        }
+        return list;
+      }
 
       void HideGizmos();
       void ShowGizmos();
@@ -129,6 +141,7 @@ namespace ToolKit
 
       void Serialize(XmlDocument* doc, XmlNode* parent) const override;
       void DeSerialize(XmlDocument* doc, XmlNode* parent) override;
+      float GetDeltaTime();
 
      private:
       void OverrideEntityConstructors();
@@ -164,19 +177,6 @@ namespace ToolKit
       std::shared_ptr<Arrow2d> m_dbgArrow;
       std::shared_ptr<LineBatch> m_dbgFrustum;
 
-      // 3 point lighting system.
-      Node* m_lightMaster = nullptr;
-      LightRawPtrArray m_sceneLights; // { 0:key 1:fill, 2:back }
-      enum LightMode : ubyte
-      {
-        EditorLit,
-        Unlit,
-        FullyLit,
-        LightComplexity,
-        LightingOnly
-      };
-      LightMode m_sceneLightingMode = EditorLit;
-
       // Editor states.
       int m_fps                                = 0;
       bool m_showPickingDebug                  = false;
@@ -187,13 +187,13 @@ namespace ToolKit
       bool m_showSelectionBoundary             = false;
       bool m_showDirectionalLightShadowFrustum = false;
       bool m_selectEffectingLights             = false;
-      bool m_showDepth                         = false;
       bool m_windowMaximized                   = false;
       byte m_showGraphicsApiErrors             = 0;
       TransformationSpace m_transformSpace     = TransformationSpace::TS_WORLD;
       PublishManager* m_publishManager         = nullptr;
       GameMod m_gameMod                        = GameMod::Stop;
       SysCommandExecutionFn m_sysComExecFn     = nullptr;
+      EditorLitMode m_sceneLightingMode        = EditorLitMode::EditorLit;
       Workspace m_workspace;
 
       // Snap settings.
@@ -209,6 +209,7 @@ namespace ToolKit
       // Internal states.
       bool m_onQuit = false;
       String m_newSceneName;
+      float m_deltaTime = 0.0f;
 
       MaterialPtr lightModeMat = nullptr;
     };

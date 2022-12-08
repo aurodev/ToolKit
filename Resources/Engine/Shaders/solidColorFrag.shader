@@ -6,6 +6,7 @@
 	<include name = "AO.shader" />
 	<uniform name = "CamData" />
 	<uniform name = "Color" />
+
 	<source>
 	<!--
 		#version 300 es
@@ -28,9 +29,9 @@
 
 			irradiance += IblIrradiance(n);
 
-			float ambientOcclusion = AmbientOcclusion();
+			// float ambientOcclusion = AmbientOcclusion();
 
-			fragColor = vec4(ambientOcclusion * irradiance * Color.xyz, Color.a);
+			fragColor = vec4(irradiance * Color.xyz, Color.a);
 		}
 	-->
 	</source>

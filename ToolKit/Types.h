@@ -150,7 +150,7 @@ namespace ToolKit
 
   // System Types
   typedef std::vector<class Event*> EventPool;
-  typedef std::shared_ptr<class Viewport*> ViewportPtr;
+  typedef std::shared_ptr<class Viewport> ViewportPtr;
 
   // Filesystem variable types
   typedef std::filesystem::path Path;
@@ -226,6 +226,8 @@ namespace ToolKit
   static const String XmlScaleElement("S");
   static const String XmlResRefElement("ResourceRef");
   static const String XmlComponent("Component");
+  static const StringView XmlNodeSettings("Settings");
+  static const StringView XmlNodeName = "name";
 
   enum class AxisLabel
   {
@@ -257,6 +259,7 @@ namespace ToolKit
 
   static const float TK_FLT_MAX = std::numeric_limits<float>::max();
   static const int TK_INT_MAX   = std::numeric_limits<int>::max();
+  static const int TK_UINT_MAX   = std::numeric_limits<unsigned int>::max();
 
   // Graphics Api Type Overrides.
   enum class GraphicTypes
@@ -276,6 +279,7 @@ namespace ToolKit
     FormatRed            = 0x1903,
     FormatRG             = 0x8227,
     FormatRGB            = 0x1907,
+    FormatRGBA8          = 0x8058,
     FormatRGBA           = 0x1908,
     FormatR32F           = 0x822E,
     FormatRG32F          = 0x8230,
@@ -286,7 +290,19 @@ namespace ToolKit
     TypeFloat            = 0x1406,
     TypeUnsignedByte     = 0x1401,
     Target2D             = 0x0DE1,
-    TargetCubeMap        = 0x8513
+    TargetCubeMap        = 0x8513,
+    Target2DArray        = 0x8C1A
+  };
+
+  enum class GraphicBitFields
+  {
+    ColorBits        = 0x00004000,
+    DepthBits        = 0x00000100,
+    StencilBits      = 0x00000400,
+    ColorDepthBits   = ColorBits | DepthBits,
+    ColorStencilBits = ColorBits | StencilBits,
+    DepthStencilBits = DepthBits | StencilBits,
+    AllBits          = ColorBits | DepthBits | StencilBits
   };
 
   static const char* TKVersionStr = "v0.3.17";

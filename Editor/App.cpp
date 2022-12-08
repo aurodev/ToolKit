@@ -6,6 +6,7 @@
 #include "ConsoleWindow.h"
 #include "DirectionComponent.h"
 #include "EditorCamera.h"
+#include "EditorPass.h"
 #include "EditorViewport.h"
 #include "EditorViewport2d.h"
 #include "FolderWindow.h"
@@ -14,11 +15,11 @@
 #include "Gizmo.h"
 #include "Global.h"
 #include "Grid.h"
-#include "MaterialInspector.h"
 #include "Mod.h"
 #include "Node.h"
 #include "OutlinerWindow.h"
 #include "OverlayUI.h"
+#include "Pass.h"
 #include "PluginWindow.h"
 #include "PopupWindows.h"
 #include "Primative.h"
@@ -37,6 +38,9 @@
 
 namespace ToolKit
 {
+  OutlinePass* myOutlineTechnique          = nullptr;
+  Editor::EditorRenderer* myEditorRenderer = nullptr;
+
   namespace Editor
   {
     App::App(int windowWidth, int windowHeight) : m_workspace(this)
@@ -47,6 +51,8 @@ namespace ToolKit
       m_renderer->m_windowSize.y = windowHeight;
       m_statusMsg                = "OK";
 
+      myEditorRenderer   = new EditorRenderer();
+
       OverrideEntityConstructors();
 
       lightModeMat = std::make_shared<Material>();
@@ -55,6 +61,8 @@ namespace ToolKit
     App::~App()
     {
       Destroy();
+      SafeDel(myEditorRenderer);
+      SafeDel(myOutlineTechnique);
     }
 
     void App::Init()
@@ -100,8 +108,7 @@ namespace ToolKit
 
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
       m_publishManager               = new PublishManager();
-      GetRenderer()->m_clearColor =
-          Vec4(0.007024517f, 0.00959683f, 0.018735119f, 1.0f);
+      GetRenderer()->m_clearColor    = g_wndBgColor;
     }
 
     void App::DestroyEditorEntities()
@@ -123,13 +130,6 @@ namespace ToolKit
         GetCurrentScene()->RemoveEntity(m_dbgFrustum->GetIdVal());
         m_dbgFrustum = nullptr;
       }
-
-      for (Light* light : m_sceneLights)
-      {
-        SafeDel(light);
-      }
-      SafeDel(m_lightMaster);
-      m_sceneLights.clear();
 
       for (Entity* dbgObj : m_perFrameDebugObjects)
       {
@@ -157,83 +157,30 @@ namespace ToolKit
 
     void App::Frame(float deltaTime)
     {
+      m_deltaTime = deltaTime;
       UI::BeginUI();
       UI::ShowUI();
-
-      // Update animations.
-      GetAnimationPlayer()->Update(MillisecToSec(deltaTime));
 
       // Update Mods.
       ModManager::GetInstance()->Update(deltaTime);
       std::vector<EditorViewport*> viewports;
       for (Window* wnd : m_windows)
       {
-        if (EditorViewport* vp = dynamic_cast<EditorViewport*>(wnd))
+        if (wnd->IsViewport())
         {
-          viewports.push_back(vp);
-          GetCurrentScene()->UpdateBillboardTransforms(vp);
+          viewports.push_back((EditorViewport*) wnd);
         }
         wnd->DispatchSignals();
       }
 
+      EditorScenePtr scene = GetCurrentScene();
+      scene->Update(deltaTime);
       ShowSimulationWindow(deltaTime);
-
-      // Selected entities
-      EntityRawPtrArray selecteds;
-      GetCurrentScene()->GetSelectedEntities(selecteds);
-
-      LightRawPtrArray allLights = GetCurrentScene()->GetLights();
-
-      // Enable light gizmos
-      bool foundFirstLight      = false;
-      Light* firstSelectedLight = nullptr;
-      for (Light* light : allLights)
-      {
-        bool found = false;
-        for (Entity* ntt : selecteds)
-        {
-          if (light->GetIdVal() == ntt->GetIdVal())
-          {
-            if (!foundFirstLight)
-            {
-              firstSelectedLight = light;
-              foundFirstLight    = true;
-            }
-            EnableLightGizmo(light, true);
-            found = true;
-            break;
-          }
-        }
-
-        if (!found || (m_showDepth && foundFirstLight))
-        {
-          EnableLightGizmo(light, false);
-        }
-      }
-
-      // Take all lights in an array
-      LightRawPtrArray totalLights;
-
-      totalLights = GetCurrentScene()->GetLights();
-      if (m_sceneLightingMode == EditorLit)
-      {
-        totalLights = m_sceneLights;
-      }
-
-      // Sort lights by type
-      auto lightSortFn = [](Light* light1, Light* light2) -> bool {
-        return (light1->GetType() == EntityType::Entity_DirectionalLight &&
-                (light2->GetType() == EntityType::Entity_SpotLight ||
-                 light2->GetType() == EntityType::Entity_PointLight));
-      };
-      std::stable_sort(totalLights.begin(), totalLights.end(), lightSortFn);
 
       // Render Viewports.
       for (EditorViewport* viewport : viewports)
       {
-        // Update scene lights for the current view.
-        Camera* viewCam = viewport->GetCamera();
-        m_lightMaster->OrphanSelf(false);
+        viewport->Update(deltaTime);
 
         // PlayWindow is drawn on perspective. Thus, skip perspective.
         if (m_gameMod != GameMod::Stop && !m_simulatorSettings.Windowed)
@@ -244,196 +191,17 @@ namespace ToolKit
           }
         }
 
-        viewport->Update(deltaTime);
-
-        GetCurrentScene()->UpdateBillboardTransforms(viewport);
-
         if (viewport->IsVisible())
         {
-          if (m_showDepth && foundFirstLight)
-          {
-            // Update shadow map cameras
-            Camera cam;
-            switch (firstSelectedLight->GetType())
-            {
-            case EntityType::Entity_DirectionalLight:
-              static_cast<DirectionalLight*>(firstSelectedLight)
-                  ->UpdateShadowMapCamera(
-                      &cam,
-                      GetSceneManager()->GetCurrentScene()->GetEntities());
-              break;
-            case EntityType::Entity_SpotLight:
-              static_cast<SpotLight*>(firstSelectedLight)
-                  ->UpdateShadowMapCamera(&cam);
-              break;
-            case EntityType::Entity_PointLight:
-              static_cast<PointLight*>(firstSelectedLight)
-                  ->UpdateShadowMapCamera(&cam);
-              break;
-            }
-
-            // Update material
-            lightModeMat->UnInit();
-            if (firstSelectedLight->GetType() ==
-                EntityType::Entity_DirectionalLight)
-            {
-              lightModeMat->m_vertexShader = GetShaderManager()->Create<Shader>(
-                  ShaderPath("ToolKit/orthogonalDepthViewVert.shader"));
-              lightModeMat->m_fragmentShader =
-                  GetShaderManager()->Create<Shader>(
-                      ShaderPath("ToolKit/orthogonalDepthViewFrag.shader"));
-
-              lightModeMat->m_vertexShader->SetShaderParameter(
-                  "LightView", ParameterVariant(cam.GetViewMatrix()));
-              lightModeMat->m_vertexShader->SetShaderParameter(
-                  "LightFrustumHalfSize",
-                  ParameterVariant(
-                      (cam.GetData().far - cam.GetData().nearDist) / 2.0f));
-              lightModeMat->m_vertexShader->SetShaderParameter(
-                  "LightDir",
-                  ParameterVariant(
-                      static_cast<DirectionalLight*>(firstSelectedLight)
-                          ->GetComponent<DirectionComponent>()
-                          ->GetDirection()));
-              lightModeMat->Init();
-              m_renderer->m_overrideMat = lightModeMat;
-            }
-            else // Point or spot light
-            {
-              lightModeMat->m_vertexShader = GetShaderManager()->Create<Shader>(
-                  ShaderPath("ToolKit/defaultVertex.shader"));
-              lightModeMat->m_fragmentShader =
-                  GetShaderManager()->Create<Shader>(
-                      ShaderPath("ToolKit/perspectiveDepthViewFrag.shader"));
-
-              const Vec3 pos = firstSelectedLight->m_node->GetTranslation(
-                  TransformationSpace::TS_WORLD);
-              lightModeMat->m_fragmentShader->SetShaderParameter(
-                  "lightPos", ParameterVariant(pos));
-              lightModeMat->m_fragmentShader->SetShaderParameter(
-                  "far", ParameterVariant(cam.GetData().far));
-              lightModeMat->Init();
-              m_renderer->m_overrideMat = lightModeMat;
-            }
-          }
-          else
-          {
-            switch (m_sceneLightingMode)
-            {
-            case LightComplexity: {
-              lightModeMat->UnInit();
-              lightModeMat->m_fragmentShader =
-                  GetShaderManager()->Create<Shader>(
-                      ShaderPath("ToolKit/lightComplexity.shader"));
-              lightModeMat->Init();
-              m_renderer->m_overrideMat = lightModeMat;
-            }
-            break;
-            case LightingOnly: {
-
-              // NOTE:
-              // No transparent rendering
-              // Always renders with AO open
-
-              lightModeMat->m_fragmentShader =
-                  GetShaderManager()->Create<Shader>(
-                      ShaderPath("ToolKit/lightingOnly.shader"));
-              lightModeMat->Init();
-              m_renderer->m_overrideMat = lightModeMat;
-            }
-            break;
-            case Unlit: {
-              lightModeMat =
-                  GetMaterialManager()->Create<Material>("unlit.material");
-              lightModeMat->Init();
-              m_renderer->m_overrideMat            = lightModeMat;
-              m_renderer->m_overrideDiffuseTexture = true;
-            }
-            break;
-            default:
-              m_renderer->m_overrideMat            = nullptr;
-              m_renderer->m_overrideDiffuseTexture = false;
-            }
-          }
-
-          // Render scene.
-          m_renderer->RenderScene(GetCurrentScene(), viewport, totalLights);
-
-          if (!m_showDepth || !foundFirstLight)
-          {
-            // Render grid.
-            Camera* cam     = viewport->GetCamera();
-            auto gridDrawFn = [this, &cam, &viewport](Grid* grid) -> void {
-              m_renderer->m_gridParams.sizeEachCell = grid->m_gridCellSize;
-              m_renderer->m_gridParams.axisColorHorizontal =
-                  grid->m_horizontalAxisColor;
-              m_renderer->m_gridParams.axisColorVertical =
-                  grid->m_verticalAxisColor;
-              m_renderer->m_gridParams.maxLinePixelCount =
-                  grid->m_maxLinePixelCount;
-              m_renderer->m_gridParams.is2DViewport =
-                  (viewport->GetType() == Window::Type::Viewport2d);
-              m_renderer->Render(grid, cam);
-            };
-
-            Grid* grid = viewport->GetType() == Window::Type::Viewport2d
-                             ? m_2dGrid
-                             : m_grid;
-
-            gridDrawFn(grid);
-
-            // Render fixed scene objects.
-            if (viewport->GetType() != Window::Type::Viewport2d)
-            {
-              m_origin->LookAt(cam, viewport->m_zoom);
-              m_renderer->Render(m_origin, cam);
-
-              m_cursor->LookAt(cam, viewport->m_zoom);
-              m_renderer->Render(m_cursor, cam);
-            }
-
-            // Render gizmo.
-            RenderGizmo(viewport, m_gizmo);
-
-            // Render anchor.
-            if (viewport->GetType() == Window::Type::Viewport2d)
-            {
-              RenderAnchor(viewport, m_anchor);
-            }
-
-            RenderComponentGizmo(viewport, selecteds);
-          }
-        }
-
-        if (!m_showDepth || !foundFirstLight)
-        {
-          RenderSelected(viewport, selecteds);
-
-          // Render debug objects.
-          if (!m_perFrameDebugObjects.empty())
-          {
-            for (Entity* dbgObj : m_perFrameDebugObjects)
-            {
-              m_renderer->Render(dbgObj, viewCam);
-            }
-            for (Entity* dbgObj : m_perFrameDebugObjects)
-            {
-              SafeDel(dbgObj);
-            }
-            m_perFrameDebugObjects.clear();
-          }
+          myEditorRenderer->m_params.App      = this;
+          myEditorRenderer->m_params.LitMode  = m_sceneLightingMode;
+          myEditorRenderer->m_params.Viewport = viewport;
+          myEditorRenderer->Render();
         }
       }
 
-      // Viewports set their own render target.
-      // Set the app framebuffer back for UI.
-      m_renderer->SetFramebuffer(nullptr);
-
       // Render UI.
       UI::EndUI();
-
-      // Remove editor lights
-      m_lightMaster->OrphanSelf();
 
       m_renderer->m_totalFrameCount++;
     }
@@ -466,8 +234,12 @@ namespace ToolKit
 
       auto saveFn = []() -> void {
         g_app->GetCurrentScene()->Save(false);
-        g_app->m_statusMsg = "Scene saved";
-        g_app->GetAssetBrowser()->UpdateContent();
+        g_app->m_statusMsg                    = "Scene saved";
+        FolderWindowRawPtrArray folderWindows = g_app->GetAssetBrowsers();
+        for (FolderWindow* folderWnd : folderWindows)
+        {
+          folderWnd->UpdateContent();
+        }
       };
 
       // File existance check.
@@ -558,6 +330,8 @@ namespace ToolKit
           ConcatPaths({fullPath, "Resources", "Audio"}));
       std::filesystem::create_directories(
           ConcatPaths({fullPath, "Resources", "Fonts"}));
+      std::filesystem::create_directories(
+          ConcatPaths({fullPath, "Resources", "Layers"}));
       std::filesystem::create_directories(
           ConcatPaths({fullPath, "Resources", "Materials"}));
       std::filesystem::create_directories(
@@ -681,11 +455,17 @@ namespace ToolKit
       // create a build dir if not exist.
       std::filesystem::create_directories(buildDir);
 
-      // Update project files in case of change.
+// Update project files in case of change.
+#ifdef TK_DEBUG
+      static const StringView buildConfig = "Debug";
+#else
+      static const StringView buildConfig = "Release";
+#endif
       String cmd  = "cmake -S " + codePath + " -B " + buildDir;
       m_statusMsg = "Compiling ..." + g_statusNoTerminate;
       ExecSysCommand(cmd, true, false, [this, buildDir](int res) -> void {
-        String cmd = "cmake --build " + buildDir;
+        String cmd =
+            "cmake --build " + buildDir + " --config " + buildConfig.data();
         ExecSysCommand(cmd, false, false, [=](int res) -> void {
           if (res)
           {
@@ -727,6 +507,26 @@ namespace ToolKit
       GetSceneManager()->SetCurrentScene(scene);
     }
 
+    void App::FocusEntity(Entity* entity)
+    {
+      Camera* cam = nullptr;
+      if (Viewport* viewport = GetActiveViewport())
+      {
+        cam = viewport->GetCamera();
+      }
+      else if (Viewport* viewport = GetViewport(g_3dViewport))
+      {
+        cam = viewport->GetCamera();
+      }
+      else
+      {
+        m_statusMsg = "No 3D viewport !";
+        return;
+      }
+
+      cam->FocusToBoundingBox(entity->GetAABB(true), 1.1f);
+    }
+
     int App::ExecSysCommand(StringView cmd,
                             bool async,
                             bool showConsole,
@@ -745,7 +545,7 @@ namespace ToolKit
       DeleteWindows();
 
       String defEditSet = ConcatPaths({ConfigPath(), g_editorSettingsFile});
-      if (CheckFile(defEditSet))
+      if (CheckFile(defEditSet) && CheckFile(m_workspace.GetActiveWorkspace()))
       {
         // Try reading defaults.
         String settingsFile = defEditSet;
@@ -787,7 +587,7 @@ namespace ToolKit
         vp->m_name = g_IsoViewport;
         vp->GetCamera()->m_node->SetTranslation({0.0f, 10.0f, 0.0f});
         vp->GetCamera()->SetLens(-10.0f, 10.0f, -10.0f, 10.0f, 0.01f, 1000.0f);
-        vp->m_zoom = 0.02f;
+        vp->GetCamera()->m_orthographicScale = 0.02f;
         vp->GetCamera()->GetComponent<DirectionComponent>()->Pitch(
             glm::radians(-90.0f));
         vp->m_cameraAlignment = CameraAlignment::Top;
@@ -797,9 +597,8 @@ namespace ToolKit
         ConsoleWindow* console = new ConsoleWindow();
         m_windows.push_back(console);
 
-        FolderWindow* assetBrowser = new FolderWindow();
+        FolderWindow* assetBrowser = new FolderWindow(true);
         assetBrowser->m_name       = g_assetBrowserStr;
-        assetBrowser->Iterate(ResourcePath(), true);
         m_windows.push_back(assetBrowser);
 
         OutlinerWindow* outliner = new OutlinerWindow();
@@ -809,10 +608,6 @@ namespace ToolKit
         PropInspector* inspector = new PropInspector();
         inspector->m_name        = g_propInspector;
         m_windows.push_back(inspector);
-
-        MaterialInspector* matInspect = new MaterialInspector();
-        matInspect->m_name            = g_matInspector;
-        m_windows.push_back(matInspect);
 
         PluginWindow* plugWindow = new PluginWindow();
         m_windows.push_back(plugWindow);
@@ -865,17 +660,11 @@ namespace ToolKit
           case Window::Type::Inspector:
             wnd = new PropInspector(wndNode);
             break;
-          case Window::Type::MaterialInspector:
-            wnd = new MaterialInspector(wndNode);
-            break;
           case Window::Type::PluginWindow:
             wnd = new PluginWindow(wndNode);
             break;
           case Window::Type::Viewport2d:
             wnd = new EditorViewport2d(wndNode);
-            break;
-          default:
-            assert(false);
             break;
           }
 
@@ -947,11 +736,14 @@ namespace ToolKit
             cmd += finalPath;
           }
 
-          cmd += "\" -s " + std::to_string(UI::ImportData.scale);
+          cmd += "\" -s " + std::to_string(UI::ImportData.Scale);
 
           // Execute command
           result = ExecSysCommand(cmd.c_str(), false, false);
-          assert(result != -1);
+          if (result != 0)
+          {
+            GetLogger()->WriteConsole(LogType::Error, "Import failed!");
+          }
         }
 
         // Move assets.
@@ -1088,9 +880,10 @@ namespace ToolKit
             mesh = GetMeshManager()->Create<Mesh>(meshFile);
           }
 
-          if (FolderWindow* browser = GetAssetBrowser())
+          FolderWindowRawPtrArray folderWindows = g_app->GetAssetBrowsers();
+          for (FolderWindow* folderWnd : folderWindows)
           {
-            browser->UpdateContent();
+            folderWnd->UpdateContent();
           }
         }
 
@@ -1126,7 +919,28 @@ namespace ToolKit
         return true;
       }
 
+      if (SupportedImageFormat(ext))
+      {
+        return true;
+      }
+
       return false;
+    }
+    void App::ManageDropfile(const StringView& fileName)
+    {
+      UI::m_postponedActions.push_back([fileName]() -> void {
+        const FolderWindowRawPtrArray& assetBrowsers =
+            g_app->GetAssetBrowsers();
+        for (FolderWindow* folderWindow : assetBrowsers)
+        {
+          if (folderWindow->MouseHovers())
+          {
+            UI::ImportData.ActiveView = folderWindow->GetActiveView(true);
+            UI::ImportData.Files.push_back(fileName.data());
+            UI::ImportData.ShowImportWindow = true;
+          }
+        }
+      });
     }
 
     void App::OpenScene(const String& fullPath)
@@ -1219,6 +1033,27 @@ namespace ToolKit
       GetFileManager()->PackResources(path);
     }
 
+    void App::SaveAllResources()
+    {
+      for (auto resource : GetResourceManager(ResourceType::Mesh)->m_storage)
+      {
+        resource.second->m_dirty = true;
+        resource.second->Save(true);
+      }
+      for (auto resource :
+           GetResourceManager(ResourceType::SkinMesh)->m_storage)
+      {
+        resource.second->m_dirty = true;
+        resource.second->Save(true);
+      }
+      for (auto resource :
+           GetResourceManager(ResourceType::Animation)->m_storage)
+      {
+        resource.second->m_dirty = true;
+        resource.second->Save(true);
+      }
+    }
+
     Window* App::GetActiveWindow()
     {
       for (Window* wnd : m_windows)
@@ -1277,9 +1112,9 @@ namespace ToolKit
       return nullptr;
     }
 
-    FolderWindow* App::GetAssetBrowser()
+    FolderWindowRawPtrArray App::GetAssetBrowsers()
     {
-      return GetWindow<FolderWindow>(g_assetBrowserStr);
+      return GetAllWindows<FolderWindow>(g_assetBrowserStr);
     }
 
     OutlinerWindow* App::GetOutliner()
@@ -1290,201 +1125,6 @@ namespace ToolKit
     PropInspector* App::GetPropInspector()
     {
       return GetWindow<PropInspector>(g_propInspector);
-    }
-
-    MaterialInspector* App::GetMaterialInspector()
-    {
-      return GetWindow<MaterialInspector>(g_matInspector);
-    }
-
-    void App::RenderSelected(EditorViewport* viewport,
-                             EntityRawPtrArray selecteds)
-    {
-      if (selecteds.empty())
-      {
-        return;
-      }
-
-      auto RenderFn = [this, viewport](const EntityRawPtrArray& selection,
-                                       const Vec4& color) -> void {
-        if (selection.empty())
-        {
-          return;
-        }
-
-        m_renderer->SetFramebuffer(
-            viewport->m_selectedFramebuffer, true, {0.0f, 0.0f, 0.0f, 1.0});
-
-        glEnable(GL_STENCIL_TEST);
-        glStencilMask(0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-        glStencilFunc(GL_ALWAYS, 0xFF, 0xFF);
-        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-        glClear(GL_STENCIL_BUFFER_BIT);
-
-        // webgl create problem with depth only drawing with textures.
-        static MaterialPtr solidMat =
-            GetMaterialManager()->GetCopyOfSolidMaterial();
-        solidMat->GetRenderState()->cullMode = CullingType::TwoSided;
-        MaterialPtr overrideMatPrev          = m_renderer->m_overrideMat;
-        m_renderer->m_overrideMat            = solidMat;
-
-        bool isLight = false;
-        for (Entity* ntt : selection)
-        {
-          // Add billboard
-          Entity* bb = GetCurrentScene()->GetBillboardOfEntity(ntt);
-          if (bb != nullptr)
-          {
-            static_cast<Billboard*>(bb)->LookAt(viewport->GetCamera(),
-                                                viewport->m_zoom);
-            m_renderer->Render(bb, viewport->GetCamera());
-          }
-
-          if (ntt->IsDrawable())
-          {
-            isLight = false;
-            if (ntt->IsLightInstance())
-            {
-              isLight = true;
-            }
-
-            // Disable all gizmos
-            if (isLight)
-            {
-              Light* light = static_cast<Light*>(ntt);
-              EnableLightGizmo(light, false);
-              m_renderer->Render(ntt, viewport->GetCamera());
-              EnableLightGizmo(light, true);
-            }
-            else
-            {
-              m_renderer->Render(ntt, viewport->GetCamera());
-            }
-          }
-        }
-
-        m_renderer->m_overrideMat = overrideMatPrev;
-
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-
-        glStencilFunc(GL_NOTEQUAL, 0xFF, 0xFF);
-        glStencilMask(0x00);
-        ShaderPtr solidColor = GetShaderManager()->Create<Shader>(
-            ShaderPath("unlitColorFrag.shader", true));
-        m_renderer->DrawFullQuad(solidColor);
-        glDisable(GL_STENCIL_TEST);
-
-        m_renderer->SetFramebuffer(viewport->m_framebuffer, false);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        // Dilate.
-        GetRenderer()->SetTexture(0,
-                                  viewport->m_selectedStencilRT->m_textureId);
-        ShaderPtr dilate = GetShaderManager()->Create<Shader>(
-            ShaderPath("dilateFrag.shader", true));
-        dilate->SetShaderParameter("Color", ParameterVariant(color));
-        m_renderer->DrawFullQuad(dilate);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-      };
-
-      Entity* primary = selecteds.back();
-
-      selecteds.pop_back();
-      RenderFn(selecteds, g_selectHighLightSecondaryColor);
-
-      selecteds.clear();
-      selecteds.push_back(primary);
-      RenderFn(selecteds, g_selectHighLightPrimaryColor);
-
-      if (m_showSelectionBoundary && primary->IsDrawable())
-      {
-        m_perFrameDebugObjects.push_back(
-            CreateBoundingBoxDebugObject(primary->GetAABB(true)));
-      }
-
-      if (m_showDirectionalLightShadowFrustum)
-      {
-        // Directional light shadow map frustum
-        if (primary->GetType() == EntityType::Entity_DirectionalLight &&
-            static_cast<DirectionalLight*>(primary)->GetCastShadowVal())
-        {
-          m_perFrameDebugObjects.push_back(
-              static_cast<EditorDirectionalLight*>(primary)
-                  ->GetDebugShadowFrustum());
-        }
-      }
-    }
-
-    void App::RenderGizmo(EditorViewport* viewport, Gizmo* gizmo)
-    {
-      if (gizmo == nullptr)
-      {
-        return;
-      }
-
-      gizmo->LookAt(viewport->GetCamera(), viewport->m_zoom);
-
-      glClear(GL_DEPTH_BUFFER_BIT);
-      if (PolarGizmo* pg = dynamic_cast<PolarGizmo*>(gizmo))
-      {
-        pg->Render(m_renderer, viewport->GetCamera());
-      }
-      else
-      {
-        Entity* nttGizmo = dynamic_cast<Entity*>(gizmo);
-        if (nttGizmo != nullptr)
-        {
-          m_renderer->Render(gizmo, viewport->GetCamera());
-        }
-      }
-    }
-
-    void App::RenderAnchor(EditorViewport* viewport, AnchorPtr anchor)
-    {
-      if (anchor == nullptr)
-      {
-        return;
-      }
-
-      glClear(GL_DEPTH_BUFFER_BIT);
-
-      if (dynamic_cast<Entity*>(anchor.get()) != nullptr)
-      {
-        if (anchor->m_entity && anchor->m_entity->m_node->m_parent &&
-            anchor->m_entity->m_node->m_parent->m_entity &&
-            anchor->m_entity->m_node->m_parent->m_entity->GetType() ==
-                EntityType::Entity_Canvas)
-          m_renderer->Render(anchor.get(), viewport->GetCamera());
-      }
-    }
-
-    void App::RenderComponentGizmo(EditorViewport* viewport,
-                                   EntityRawPtrArray selecteds)
-    {
-      // Entity billboards
-      for (Billboard* bb : GetCurrentScene()->GetBillboards())
-      {
-        m_renderer->Render(bb, viewport->GetCamera());
-      }
-
-      // Selected gizmos
-      for (Entity* ntt : selecteds)
-      {
-        // Environment Component
-        EnvironmentComponentPtr envCom =
-            ntt->GetComponent<EnvironmentComponent>();
-        if (envCom != nullptr && ntt->GetType() != EntityType::Entity_Sky)
-        {
-          // Bounding box
-          m_perFrameDebugObjects.push_back(CreateBoundingBoxDebugObject(
-              *envCom->GetBBox(), g_environmentGizmoColor, 1.0f));
-        }
-      }
     }
 
     void App::HideGizmos()
@@ -1720,46 +1360,17 @@ namespace ToolKit
       m_cursor = new Cursor();
       m_origin = new Axis3d();
 
-      m_grid = new Grid(g_max2dGridSize, AxisLabel::ZX, 0.020f, 3.0);
+      m_grid = new Grid(g_max2dGridSize, AxisLabel::ZX, 0.020f, 3.0, false);
 
       m_2dGrid = new Grid(g_max2dGridSize,
                           AxisLabel::XY,
                           10.0f,
-                          4.0); // Generate grid cells 10 x 10
-
-      // Lights and camera.
-      m_lightMaster = new Node();
-
-      float intensity         = 1.5f;
-      DirectionalLight* light = new DirectionalLight();
-      light->SetColorVal(Vec3(0.55f));
-      light->SetIntensityVal(intensity);
-      light->GetComponent<DirectionComponent>()->Yaw(glm::radians(-20.0f));
-      light->GetComponent<DirectionComponent>()->Pitch(glm::radians(-20.0f));
-      light->m_isStudioLight = true;
-      light->SetCastShadowVal(false);
-      m_lightMaster->AddChild(light->m_node);
-      m_sceneLights.push_back(light);
-
-      light = new DirectionalLight();
-      light->SetColorVal(Vec3(0.15f));
-      light->SetIntensityVal(intensity);
-      light->GetComponent<DirectionComponent>()->Yaw(glm::radians(90.0f));
-      light->GetComponent<DirectionComponent>()->Pitch(glm::radians(-45.0f));
-      light->m_isStudioLight = true;
-      light->SetCastShadowVal(false);
-      m_lightMaster->AddChild(light->m_node);
-      m_sceneLights.push_back(light);
-
-      light = new DirectionalLight();
-      light->SetColorVal(Vec3(0.1f));
-      light->SetIntensityVal(intensity);
-      light->GetComponent<DirectionComponent>()->Yaw(glm::radians(120.0f));
-      light->GetComponent<DirectionComponent>()->Pitch(glm::radians(60.0f));
-      light->m_isStudioLight = true;
-      light->SetCastShadowVal(false);
-      m_lightMaster->AddChild(light->m_node);
-      m_sceneLights.push_back(light);
+                          4.0,
+                          true); // Generate grid cells 10 x 10
+    }
+    float App::GetDeltaTime()
+    {
+      return m_deltaTime;
     }
 
     void DebugMessage(const String& msg)

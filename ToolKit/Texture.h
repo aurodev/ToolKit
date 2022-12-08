@@ -111,17 +111,16 @@ namespace ToolKit
   struct RenderTargetSettigs
   {
     byte Msaa                   = 0;
-    bool useBorderColor         = false;
     GraphicTypes Target         = GraphicTypes::Target2D;
     GraphicTypes WarpS          = GraphicTypes::UVRepeat;
     GraphicTypes WarpT          = GraphicTypes::UVRepeat;
     GraphicTypes WarpR          = GraphicTypes::UVRepeat;
     GraphicTypes MinFilter      = GraphicTypes::SampleNearest;
     GraphicTypes MagFilter      = GraphicTypes::SampleNearest;
-    GraphicTypes InternalFormat = GraphicTypes::FormatRGBA;
+    GraphicTypes InternalFormat = GraphicTypes::FormatRGBA16F;
     GraphicTypes Format         = GraphicTypes::FormatRGBA;
-    GraphicTypes Type           = GraphicTypes::TypeUnsignedByte;
-    Vec4 borderColor            = Vec4(0.0f);
+    GraphicTypes Type           = GraphicTypes::TypeFloat;
+    int Layers                  = 1;
   };
 
   class TK_API RenderTarget : public Texture

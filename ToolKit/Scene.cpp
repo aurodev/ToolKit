@@ -128,6 +128,10 @@ namespace ToolKit
     Destroy(false);
   }
 
+  void Scene::Update(float deltaTime)
+  {
+  }
+
   void Scene::Merge(ScenePtr other)
   {
     ULongID lastID = GetHandleManager()->GetNextHandle(), biggestID = 0;
@@ -434,6 +438,31 @@ namespace ToolKit
     AddEntity(prefab);
     prefab->SetPrefabPathVal(path);
     prefab->Init(this);
+  }
+
+  EntityRawPtrArray Scene::GetEnvironmentLightEntities()
+  {
+    EntityRawPtrArray envLightNtties;
+    envLightNtties.clear();
+    for (Entity* ntt : envLightNtties)
+    {
+      if (ntt->GetType() == EntityType::Entity_Sky)
+      {
+        continue;
+      }
+
+      EnvironmentComponentPtr envCom =
+          ntt->GetComponent<EnvironmentComponent>();
+      if (envCom != nullptr && envCom->GetHdriVal() != nullptr &&
+          envCom->GetHdriVal()->IsTextureAssigned() &&
+          envCom->GetIlluminateVal())
+      {
+        envCom->Init(true);
+        envLightNtties.push_back(ntt);
+      }
+    }
+
+    return envLightNtties;
   }
 
   void Scene::Destroy(bool removeResources)

@@ -138,12 +138,12 @@ namespace ToolKit
     bool m_preInitiated = false;
     bool m_initiated    = false;
     String m_resourceRoot;
+    String m_cfgPath;
     EventPool m_eventPool;
     EngineSettings m_engineSettings;
 
    private:
     static Main* m_proxy;
-    String m_cfgPath;
   };
 
   // Accessors.
@@ -182,5 +182,6 @@ namespace ToolKit
   TK_API String MaterialPath(const String& file, bool def = false);
   TK_API String ScenePath(const String& file, bool def = false);
   TK_API String PrefabPath(const String& file, bool def = false);
+  TK_API String LayerPath(const String& file, bool def = false);
 
 } // namespace ToolKit

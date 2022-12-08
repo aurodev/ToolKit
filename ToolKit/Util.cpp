@@ -617,7 +617,7 @@ namespace ToolKit
       return false;
     }
 
-    static String supportedFormats(PNG + JPG + JPEG + TGA + BMP + PSD);
+    static String supportedFormats(PNG + JPG + JPEG + TGA + BMP + PSD + HDR);
     return supportedFormats.find(ToLower(ext)) != String::npos;
   }
 
@@ -998,29 +998,6 @@ namespace ToolKit
 
           return false;
         });
-  }
-
-  TK_API MaterialPtr GetRenderMaterial(Entity* entity)
-  {
-    MaterialPtr renderMat = nullptr;
-    if (MaterialComponentPtr matCom = entity->GetMaterialComponent())
-    {
-      renderMat = matCom->GetMaterialVal();
-    }
-    else if (MeshComponentPtr meshCom = entity->GetMeshComponent())
-    {
-      renderMat = meshCom->GetMeshVal()->m_material;
-    }
-
-    return renderMat;
-  }
-
-  TK_API bool IsLightType(EntityType type)
-  {
-    return (type == EntityType::Entity_Light ||
-            type == EntityType::Entity_DirectionalLight ||
-            type == EntityType::Entity_PointLight ||
-            type == EntityType::Entity_SpotLight);
   }
 
   void* TKMalloc(size_t sz)

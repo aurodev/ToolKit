@@ -4,11 +4,11 @@
 	<uniform name = "CamData" />
 	<uniform name = "Model" />
 	<uniform name = "InverseTransModel" />
-	<uniform name = "GridData" />
 	<source>
 	<!--
 		#version 300 es
 		precision highp float;
+		precision mediump int;
 
 		// Fixed Attributes.
 		layout (location = 0) in vec3 vPosition;

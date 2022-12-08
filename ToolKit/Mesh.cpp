@@ -1,5 +1,6 @@
 #include "Mesh.h"
 
+#include "Common/base64.h"
 #include "GL/glew.h"
 #include "Material.h"
 #include "Skeleton.h"
@@ -15,12 +16,82 @@
 
 #include "DebugNew.h"
 
+static constexpr bool SERIALIZE_MESH_AS_BINARY = true;
+
 namespace ToolKit
 {
+
+#define BUFFER_OFFSET(idx) (static_cast<char*>(0) + (idx))
+
+  void SetVertexLayout(VertexLayout layout)
+  {
+    if (layout == VertexLayout::None)
+    {
+      for (int i = 0; i < 6; i++)
+      {
+        glDisableVertexAttribArray(i);
+      }
+    }
+
+    if (layout == VertexLayout::Mesh)
+    {
+      GLuint offset = 0;
+      glEnableVertexAttribArray(0); // Vertex
+      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+      offset += 3 * sizeof(float);
+
+      glEnableVertexAttribArray(1); // Normal
+      glVertexAttribPointer(
+          1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
+      offset += 3 * sizeof(float);
+
+      glEnableVertexAttribArray(2); // Texture
+      glVertexAttribPointer(
+          2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
+      offset += 2 * sizeof(float);
+
+      glEnableVertexAttribArray(3); // BiTangent
+      glVertexAttribPointer(
+          3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
+    }
+
+    if (layout == VertexLayout::SkinMesh)
+    {
+      GLuint offset = 0;
+      glEnableVertexAttribArray(0); // Vertex
+      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), 0);
+      offset += 3 * sizeof(float);
+
+      glEnableVertexAttribArray(1); // Normal
+      glVertexAttribPointer(
+          1, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
+      offset += 3 * sizeof(float);
+
+      glEnableVertexAttribArray(2); // Texture
+      glVertexAttribPointer(
+          2, 2, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
+      offset += 2 * sizeof(float);
+
+      glEnableVertexAttribArray(3); // BiTangent
+      glVertexAttribPointer(
+          3, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
+      offset += 3 * sizeof(float);
+
+      glEnableVertexAttribArray(4); // Bones
+      glVertexAttribPointer(
+          4, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
+      offset += 4 * sizeof(float);
+
+      glEnableVertexAttribArray(5); // Weights
+      glVertexAttribPointer(
+          5, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
+    }
+  }
 
   Mesh::Mesh()
   {
     m_material = std::make_shared<Material>();
+    m_vertexLayout = VertexLayout::Mesh;
   }
 
   Mesh::Mesh(const String& file) : Mesh()
@@ -41,8 +112,9 @@ namespace ToolKit
     }
 
     InitVertices(flushClientSideArray);
+    SetVertexLayout(m_vertexLayout);
     InitIndices(flushClientSideArray);
-    m_vertexLayout = VertexLayout::Mesh;
+    
     if (!flushClientSideArray)
     {
       ConstructFaces();
@@ -287,45 +359,191 @@ namespace ToolKit
     XmlNode* vertices = CreateXmlNode(doc, "vertices", meshNode);
 
     // Serialize vertex
-    for (const auto& v : mesh->m_clientSideVertices)
+    if constexpr (SERIALIZE_MESH_AS_BINARY)
     {
-      XmlNode* vNod = CreateXmlNode(doc, "v", vertices);
-
-      XmlNode* p = CreateXmlNode(doc, "p", vNod);
-      WriteVec(p, doc, v.pos);
-
-      XmlNode* n = CreateXmlNode(doc, "n", vNod);
-      WriteVec(n, doc, v.norm);
-
-      XmlNode* t = CreateXmlNode(doc, "t", vNod);
-      WriteVec(t, doc, v.tex);
-
-      XmlNode* bt = CreateXmlNode(doc, "bt", vNod);
-      WriteVec(bt, doc, v.btan);
-      if constexpr (std::is_same<T, ToolKit::SkinMesh>::value)
+      size_t vertexBufferDataSize = mesh->m_clientSideVertices.size() *
+                                    sizeof(mesh->m_clientSideVertices[0]);
+      WriteAttr(vertices,
+                doc,
+                "VertexCount",
+                std::to_string(mesh->m_clientSideVertices.size()));
+      char* b64Data = new char[vertexBufferDataSize * 2];
+      bintob64(
+          b64Data, mesh->m_clientSideVertices.data(), vertexBufferDataSize);
+      XmlNode* base64XML = CreateXmlNode(doc, "Base64", vertices);
+      base64XML->value(doc->allocate_string(b64Data));
+      SafeDelArray(b64Data);
+    }
+    else
+    {
+      for (const auto& v : mesh->m_clientSideVertices)
       {
-        XmlNode* b = CreateXmlNode(doc, "b", vNod);
-        WriteVec(b, doc, v.bones);
+        XmlNode* vNod = CreateXmlNode(doc, "v", vertices);
 
-        XmlNode* w = CreateXmlNode(doc, "w", vNod);
-        WriteVec(w, doc, v.weights);
+        XmlNode* p = CreateXmlNode(doc, "p", vNod);
+        WriteVec(p, doc, v.pos);
+
+        XmlNode* n = CreateXmlNode(doc, "n", vNod);
+        WriteVec(n, doc, v.norm);
+
+        XmlNode* t = CreateXmlNode(doc, "t", vNod);
+        WriteVec(t, doc, v.tex);
+
+        XmlNode* bt = CreateXmlNode(doc, "bt", vNod);
+        WriteVec(bt, doc, v.btan);
+        if constexpr (std::is_same<T, ToolKit::SkinMesh>::value)
+        {
+          XmlNode* b = CreateXmlNode(doc, "b", vNod);
+          WriteVec(b, doc, v.bones);
+
+          XmlNode* w = CreateXmlNode(doc, "w", vNod);
+          WriteVec(w, doc, v.weights);
+        }
       }
     }
 
     // Serialize faces
     XmlNode* faces = CreateXmlNode(doc, "faces", meshNode);
-
-    for (size_t i = 0; i < mesh->m_clientSideIndices.size() / 3; i++)
+    if constexpr (SERIALIZE_MESH_AS_BINARY)
     {
-      XmlNode* f = CreateXmlNode(doc, "f", faces);
+      size_t facesBufferDataSize = mesh->m_clientSideIndices.size() *
+                                   sizeof(mesh->m_clientSideIndices[0]);
+      WriteAttr(faces,
+                doc,
+                "FaceCount",
+                std::to_string(mesh->m_clientSideIndices.size()));
+      char* b64Data = new char[facesBufferDataSize * 2];
+      bintob64(b64Data, mesh->m_clientSideIndices.data(), facesBufferDataSize);
+      XmlNode* base64XML = CreateXmlNode(doc, "Base64", faces);
+      base64XML->value(doc->allocate_string(b64Data));
+      SafeDelArray(b64Data);
+    }
+    else
+    {
+      for (size_t i = 0; i < mesh->m_clientSideIndices.size() / 3; i++)
+      {
+        XmlNode* f = CreateXmlNode(doc, "f", faces);
 
-      WriteAttr(f, doc, "x", std::to_string(mesh->m_clientSideIndices[i * 3]));
-      WriteAttr(
-          f, doc, "y", std::to_string(mesh->m_clientSideIndices[i * 3 + 1]));
-      WriteAttr(
-          f, doc, "z", std::to_string(mesh->m_clientSideIndices[i * 3 + 2]));
+        WriteAttr(
+            f, doc, "x", std::to_string(mesh->m_clientSideIndices[i * 3]));
+        WriteAttr(
+            f, doc, "y", std::to_string(mesh->m_clientSideIndices[i * 3 + 1]));
+        WriteAttr(
+            f, doc, "z", std::to_string(mesh->m_clientSideIndices[i * 3 + 2]));
+      }
     }
   };
+
+  template <typename T>
+  void LoadMesh(XmlDocument* doc, XmlNode* parent, T* mainMesh)
+  {
+    if (parent == nullptr)
+    {
+      return;
+    }
+
+    mainMesh->m_aabb = BoundingBox();
+
+    T* mesh       = mainMesh;
+    XmlNode* node = parent;
+
+    String typeString;
+    if constexpr (std::is_same<T, Mesh>())
+    {
+      typeString = "mesh";
+    }
+    else
+    {
+      typeString = "skinMesh";
+    }
+    for (node = node->first_node(typeString.c_str()); node;
+         node = node->next_sibling(typeString.c_str()))
+    {
+      if (mesh == nullptr)
+      {
+        auto meshPtr = std::make_shared<T>();
+        mesh         = meshPtr.get();
+        mainMesh->m_subMeshes.push_back(meshPtr);
+      }
+
+      mesh->m_material = ReadMaterial(node);
+
+      if constexpr (std::is_same<T, SkinMesh>())
+      {
+        String path = Skeleton::DeserializeRef(node);
+        if (path.length() == 0)
+        {
+          assert(0 && "SkinMesh has no skeleton!");
+        }
+
+        NormalizePath(path);
+        String skelFile  = SkeletonPath(path);
+        mesh->m_skeleton = GetSkeletonManager()->Create<Skeleton>(skelFile);
+      }
+
+      XmlNode* vertex = node->first_node("vertices");
+      // Vertex Buffer stored as binary
+      if (XmlAttribute* dataSizeAttr = vertex->first_attribute("VertexCount"))
+      {
+        uint vertexCount = 0;
+        ReadAttr(vertex, "VertexCount", vertexCount);
+        mesh->m_clientSideVertices.resize(vertexCount);
+        XmlNode* b64Node = vertex->first_node("Base64");
+        b64tobin(mesh->m_clientSideVertices.data(), b64Node->value());
+
+        if constexpr (std::is_same<T, Mesh>())
+        {
+          mesh->CalculateAABB();
+        }
+      }
+      else
+      {
+        for (XmlNode* v = vertex->first_node("v"); v; v = v->next_sibling())
+        {
+          SkinVertex vd;
+          ReadVec(v->first_node("p"), vd.pos);
+          mainMesh->m_aabb.UpdateBoundary(vd.pos);
+
+          ReadVec(v->first_node("n"), vd.norm);
+          ReadVec(v->first_node("t"), vd.tex);
+          ReadVec(v->first_node("bt"), vd.btan);
+          if constexpr (std::is_same<T, SkinMesh>())
+          {
+            ReadVec(v->first_node("b"), vd.bones);
+            ReadVec(v->first_node("w"), vd.weights);
+          }
+          mesh->m_clientSideVertices.push_back(vd);
+        }
+      }
+
+      XmlNode* faces = node->first_node("faces");
+
+      if (XmlAttribute* faceCountAttr = faces->first_attribute("FaceCount"))
+      {
+        uint faceCount = 0;
+        ReadAttr(faces, "FaceCount", faceCount);
+        mesh->m_clientSideIndices.resize(faceCount);
+        XmlNode* b64Node = faces->first_node("Base64");
+        b64tobin(mesh->m_clientSideIndices.data(), b64Node->value());
+      }
+      else
+      {
+        for (XmlNode* i = faces->first_node("f"); i; i = i->next_sibling())
+        {
+          glm::ivec3 indices;
+          ReadVec(i, indices);
+          mesh->m_clientSideIndices.push_back(indices.x);
+          mesh->m_clientSideIndices.push_back(indices.y);
+          mesh->m_clientSideIndices.push_back(indices.z);
+        }
+      }
+
+      mesh->m_loaded      = true;
+      mesh->m_vertexCount = static_cast<int>(mesh->m_clientSideVertices.size());
+      mesh->m_indexCount  = static_cast<int>(mesh->m_clientSideIndices.size());
+      mesh                = nullptr;
+    }
+  }
 
   void Mesh::Serialize(XmlDocument* doc, XmlNode* parent) const
   {
@@ -350,54 +568,7 @@ namespace ToolKit
 
   void Mesh::DeSerialize(XmlDocument* doc, XmlNode* parent)
   {
-    if (parent == nullptr)
-    {
-      return;
-    }
-
-    m_aabb = BoundingBox();
-
-    Mesh* mesh    = this;
-    XmlNode* node = parent;
-    for (node = node->first_node("mesh"); node;
-         node = node->next_sibling("mesh"))
-    {
-      if (mesh == nullptr)
-      {
-        mesh = new Mesh();
-        m_subMeshes.push_back(MeshPtr(mesh));
-      }
-
-      mesh->m_material = ReadMaterial(node);
-
-      XmlNode* vertex = node->first_node("vertices");
-      for (XmlNode* v = vertex->first_node("v"); v; v = v->next_sibling())
-      {
-        Vertex vd;
-        ReadVec(v->first_node("p"), vd.pos);
-        m_aabb.UpdateBoundary(vd.pos);
-
-        ReadVec(v->first_node("n"), vd.norm);
-        ReadVec(v->first_node("t"), vd.tex);
-        ReadVec(v->first_node("bt"), vd.btan);
-        mesh->m_clientSideVertices.push_back(vd);
-      }
-
-      XmlNode* faces = node->first_node("faces");
-      for (XmlNode* i = faces->first_node("f"); i; i = i->next_sibling())
-      {
-        glm::ivec3 indices;
-        ReadVec(i, indices);
-        mesh->m_clientSideIndices.push_back(indices.x);
-        mesh->m_clientSideIndices.push_back(indices.y);
-        mesh->m_clientSideIndices.push_back(indices.z);
-      }
-
-      mesh->m_loaded      = true;
-      mesh->m_vertexCount = static_cast<int>(mesh->m_clientSideVertices.size());
-      mesh->m_indexCount  = static_cast<int>(mesh->m_clientSideIndices.size());
-      mesh                = nullptr;
-    }
+    LoadMesh(doc, parent, this);
   }
 
   void Mesh::InitVertices(bool flush)
@@ -450,9 +621,10 @@ namespace ToolKit
 
   SkinMesh::SkinMesh() : Mesh()
   {
+    m_vertexLayout = VertexLayout::SkinMesh;
   }
 
-  SkinMesh::SkinMesh(const String& file) : Mesh()
+  SkinMesh::SkinMesh(const String& file) : SkinMesh()
   {
     SetFile(file);
 
@@ -469,7 +641,6 @@ namespace ToolKit
 
   void SkinMesh::Init(bool flushClientSideArray)
   {
-    m_vertexLayout = VertexLayout::SkinMesh;
     if (m_skeleton == nullptr)
     {
       return;
@@ -515,68 +686,12 @@ namespace ToolKit
       m_loaded = true;
     }
   }
+
   void SkinMesh::DeSerialize(XmlDocument* doc, XmlNode* parent)
   {
-    if (parent == nullptr)
-    {
-      return;
-    }
-
-    m_aabb = BoundingBox();
-
-    SkinMesh* mesh = this;
-    XmlNode* node  = parent;
-    for (node = node->first_node("skinMesh"); node;
-         node = node->next_sibling("skinMesh"))
-    {
-      if (mesh == nullptr)
-      {
-        mesh = new SkinMesh();
-        m_subMeshes.push_back(MeshPtr(mesh));
-      }
-
-      mesh->m_material = ReadMaterial(node);
-
-      String path = Skeleton::DeserializeRef(node);
-      if (path.length() == 0)
-      {
-        assert(0 && "SkinMesh has no skeleton!");
-      }
-      NormalizePath(path);
-      String skelFile  = SkeletonPath(path);
-      mesh->m_skeleton = GetSkeletonManager()->Create<Skeleton>(skelFile);
-
-      XmlNode* vertex = node->first_node("vertices");
-      for (XmlNode* v = vertex->first_node("v"); v; v = v->next_sibling())
-      {
-        SkinVertex vd;
-        ReadVec(v->first_node("p"), vd.pos);
-        m_aabb.UpdateBoundary(vd.pos);
-
-        ReadVec(v->first_node("n"), vd.norm);
-        ReadVec(v->first_node("t"), vd.tex);
-        ReadVec(v->first_node("bt"), vd.btan);
-        ReadVec(v->first_node("b"), vd.bones);
-        ReadVec(v->first_node("w"), vd.weights);
-        mesh->m_clientSideVertices.push_back(vd);
-      }
-
-      XmlNode* faces = node->first_node("faces");
-      for (XmlNode* i = faces->first_node("f"); i; i = i->next_sibling())
-      {
-        glm::ivec3 indices;
-        ReadVec(i, indices);
-        mesh->m_clientSideIndices.push_back(indices.x);
-        mesh->m_clientSideIndices.push_back(indices.y);
-        mesh->m_clientSideIndices.push_back(indices.z);
-      }
-
-      mesh->m_loaded      = true;
-      mesh->m_vertexCount = static_cast<int>(mesh->m_clientSideVertices.size());
-      mesh->m_indexCount  = static_cast<int>(mesh->m_clientSideIndices.size());
-      mesh                = nullptr;
-    }
+    LoadMesh(doc, parent, this);
   }
+
   BoundingBox SkinMesh::CalculateAABB(const Skeleton* skel,
                                       const DynamicBoneMap* boneMap)
   {
@@ -590,6 +705,8 @@ namespace ToolKit
     {
       indexes[i] = i;
     }
+
+#ifndef __EMSCRIPTEN__
     std::for_each(
         std::execution::par_unseq,
         indexes.begin(),
@@ -613,6 +730,23 @@ namespace ToolKit
                 meshAABB.UpdateBoundary(skinnedPos);
               });
         });
+#else
+    for (uint index : indexes)
+    {
+      SkinMesh* m = (SkinMesh*) meshes[index];
+      if (m->m_clientSideVertices.empty())
+      {
+        continue;
+      }
+      BoundingBox& meshAABB = AABBs[index];
+
+      for (SkinVertex v : m->m_clientSideVertices)
+      {
+        const Vec3 skinnedPos = CPUSkinning(&v, skel, boneMap);
+        meshAABB.UpdateBoundary(skinnedPos);
+      }
+    }
+#endif
     for (BoundingBox& aabb : AABBs)
     {
       finalAABB.UpdateBoundary(aabb.max);

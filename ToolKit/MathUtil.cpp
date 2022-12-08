@@ -1,5 +1,6 @@
 #include "MathUtil.h"
 
+#include "Camera.h"
 #include "Mesh.h"
 #include "Node.h"
 #include "ResourceComponent.h"
@@ -386,7 +387,7 @@ namespace ToolKit
     Vec3 transformedPos = {};
     for (uint boneIndx = 0; boneIndx < 4; boneIndx++)
     {
-      uint currentBone       = vertex->bones[boneIndx];
+      uint currentBone       = (uint) vertex->bones[boneIndx];
       StaticBone* sBone      = skel->m_bones[currentBone];
       Mat4 bindPoseTransform = sBone->m_inverseWorldMatrix;
       ToolKit::Mat4 boneTransform =
@@ -533,7 +534,7 @@ namespace ToolKit
         }
         else
         {
-          res = IntersectResult::Inside;
+          // Inside
         }
       }
       else if (distmin < 0)
@@ -623,6 +624,29 @@ namespace ToolKit
     plane.normal.y = plane.normal.y / mag;
     plane.normal.z = plane.normal.z / mag;
     plane.d        = plane.d / mag;
+  }
+
+  void FrustumCull(EntityRawPtrArray& entities, Camera* camera)
+  {
+    // Frustum cull
+    Mat4 pr         = camera->GetProjectionMatrix();
+    Mat4 v          = camera->GetViewMatrix();
+    Frustum frustum = ExtractFrustum(pr * v, false);
+
+    auto delFn = [frustum](Entity* ntt) -> bool {
+      IntersectResult res = FrustumBoxIntersection(frustum, ntt->GetAABB(true));
+      if (res == IntersectResult::Outside)
+      {
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    };
+
+    entities.erase(std::remove_if(entities.begin(), entities.end(), delFn),
+                   entities.end());
   }
 
   void TransformAABB(BoundingBox& box, const Mat4& transform)

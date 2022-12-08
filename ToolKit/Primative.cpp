@@ -32,6 +32,7 @@ namespace ToolKit
 
         if (m_settings.heightInScreenSpace > 0.0f)
         {
+          // Compensate shrinkage due to height changes.
           m_node->SetScale(Vec3(m_settings.heightInScreenSpace * scale));
         }
       }
@@ -57,20 +58,24 @@ namespace ToolKit
 
         if (m_settings.heightInScreenSpace > 0.0f)
         {
+          // Compensate shrinkage due to height changes.
           float magicScale = 6.0f;
           m_node->SetScale(
-              Vec3(magicScale * m_settings.heightInScreenSpace /
-                   data.height)); // Compensate shrinkage due to height changes.
+              Vec3(magicScale * m_settings.heightInScreenSpace / scale));
         }
       }
+    }
+    else
+    {
+      m_node->SetTranslation(m_worldLocation, TransformationSpace::TS_WORLD);
+    }
 
-      if (m_settings.lookAtCamera)
-      {
-        Quaternion camOrientation =
-            cam->m_node->GetOrientation(TransformationSpace::TS_WORLD);
+    if (m_settings.lookAtCamera)
+    {
+      Quaternion camOrientation =
+          cam->m_node->GetOrientation(TransformationSpace::TS_WORLD);
 
-        m_node->SetOrientation(camOrientation, TransformationSpace::TS_WORLD);
-      }
+      m_node->SetOrientation(camOrientation, TransformationSpace::TS_WORLD);
     }
   }
 
@@ -94,7 +99,7 @@ namespace ToolKit
 
     if (genDef)
     {
-      Generate();
+      Generate(GetMeshComponent(), GetCubeScaleVal());
     }
   }
 
@@ -103,7 +108,7 @@ namespace ToolKit
     ParameterConstructor();
 
     SetCubeScaleVal(scale);
-    Generate();
+    Generate(GetMeshComponent(), GetCubeScaleVal());
   }
 
   Entity* Cube::CopyTo(Entity* copyTo) const
@@ -124,7 +129,7 @@ namespace ToolKit
   void Cube::DeSerialize(XmlDocument* doc, XmlNode* parent)
   {
     Entity::DeSerialize(doc, parent);
-    Generate();
+    Generate(GetMeshComponent(), GetCubeScaleVal());
   }
 
   void Cube::ParameterConstructor()
@@ -133,17 +138,10 @@ namespace ToolKit
     CubeScale_Define(Vec3(1.0f), "Geometry", 90, true, true);
   }
 
-  void Cube::Generate()
+  void Cube::Generate(MeshComponentPtr meshComp, const Vec3& scale)
   {
-    if (m_generated)
-    {
-      return;
-    }
-
     VertexArray vertices;
     vertices.resize(36);
-
-    const Vec3& scale = GetCubeScaleVal();
 
     Vec3 corners[8]{
         Vec3(-0.5f, 0.5f, 0.5f) * scale,   // FTL.
@@ -282,7 +280,7 @@ namespace ToolKit
     vertices[35].tex  = Vec2(1.0f, 0.0f);
     vertices[35].norm = Vec3(0.0f, -1.0f, 0.0f);
 
-    MeshPtr mesh               = GetComponent<MeshComponent>()->GetMeshVal();
+    MeshPtr mesh               = meshComp->GetMeshVal();
     mesh->m_vertexCount        = (uint) vertices.size();
     mesh->m_clientSideVertices = vertices;
     mesh->m_clientSideIndices  = {
@@ -294,8 +292,6 @@ namespace ToolKit
 
     mesh->CalculateAABB();
     mesh->ConstructFaces();
-
-    m_generated = true;
   }
 
   Quad::Quad(bool genDef)
@@ -371,14 +367,14 @@ namespace ToolKit
 
     if (genDef)
     {
-      Generate();
+      Generate(GetMeshComponent(), GetRadiusVal());
     }
   }
 
   Sphere::Sphere(float radius)
   {
     ParameterConstructor(radius);
-    Generate();
+    Generate(GetMeshComponent(), GetRadiusVal());
   }
 
   Entity* Sphere::CopyTo(Entity* copyTo) const
@@ -393,9 +389,8 @@ namespace ToolKit
     return EntityType::Entity_Sphere;
   }
 
-  void Sphere::Generate()
+  void Sphere::Generate(MeshComponentPtr meshComp, float r)
   {
-    const float r       = GetRadiusVal();
     const int nRings    = 32;
     const int nSegments = 32;
 
@@ -447,7 +442,7 @@ namespace ToolKit
       } // end for seg
     }   // end for ring
 
-    MeshPtr mesh               = GetMeshComponent()->GetMeshVal();
+    MeshPtr mesh               = meshComp->GetMeshVal();
     mesh->m_vertexCount        = (uint) vertices.size();
     mesh->m_clientSideVertices = vertices;
     mesh->m_indexCount         = (uint) indices.size();
@@ -466,7 +461,7 @@ namespace ToolKit
   void Sphere::DeSerialize(XmlDocument* doc, XmlNode* parent)
   {
     Entity::DeSerialize(doc, parent);
-    Generate();
+    Generate(GetMeshComponent(), GetRadiusVal());
   }
 
   void Sphere::ParameterConstructor(float radius)
@@ -649,7 +644,6 @@ namespace ToolKit
 
     return ntt;
   }
-
 
   EntityType Arrow2d::GetType() const
   {

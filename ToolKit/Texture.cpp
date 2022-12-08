@@ -109,13 +109,14 @@ namespace ToolKit
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+#ifndef TK_GL_ES_3_0
     if (GL_EXT_texture_filter_anisotropic)
     {
       float aniso = 0.0f;
       glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &aniso);
       glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
     }
-
+#endif // TK_GL_ES_3_0
     if (flushClientSideArray)
     {
       Clear();
@@ -353,25 +354,15 @@ namespace ToolKit
     Texture::Init(flushClientSideArray);
 
     // Convert hdri image to cubemap images
-    Texture* cubemap = GetRenderer()->GenerateCubemapFrom2DTexture(
+    m_cubemap = GetRenderer()->GenerateCubemapFrom2DTexture(
         GetTextureManager()->Create<Texture>(GetFile()),
         m_width,
         m_width,
         1.0f);
-    m_cubemap = std::make_shared<CubeMap>(cubemap->m_textureId);
-
-    // Don't let cubemap object delete this texture along with itself
-    cubemap->m_textureId = 0;
-    SafeDel(cubemap);
 
     // Generate irradience cubemap images
-    Texture* irradianceMap = GetRenderer()->GenerateIrradianceCubemap(
+    m_irradianceCubemap = GetRenderer()->GenerateIrradianceCubemap(
         m_cubemap, m_width / 64, m_width / 64);
-    m_irradianceCubemap = std::make_shared<CubeMap>(irradianceMap->m_textureId);
-
-    // Don't let cubemap object delete this texture along with itself
-    irradianceMap->m_textureId = 0;
-    SafeDel(irradianceMap);
   }
 
   void Hdri::UnInit()
@@ -526,6 +517,10 @@ namespace ToolKit
     {
       glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &currId);
     }
+    else if (m_settings.Target == GraphicTypes::Target2DArray)
+    {
+      glGetIntegerv(GL_TEXTURE_BINDING_2D_ARRAY, &currId);
+    }
 
     // Create frame buffer color texture
     glGenTextures(1, &m_textureId);
@@ -558,6 +553,15 @@ namespace ToolKit
                      0);
       }
     }
+    else if (m_settings.Target == GraphicTypes::Target2DArray)
+    {
+      glTexStorage3D(GL_TEXTURE_2D_ARRAY,
+                     1,
+                     (int) m_settings.InternalFormat,
+                     m_width,
+                     m_height,
+                     m_settings.Layers);
+    }
 
     glTexParameteri(
         (int) m_settings.Target, GL_TEXTURE_WRAP_S, (int) m_settings.WarpS);
@@ -574,13 +578,6 @@ namespace ToolKit
     glTexParameteri((int) m_settings.Target,
                     GL_TEXTURE_MAG_FILTER,
                     (int) m_settings.MagFilter);
-
-    if (m_settings.useBorderColor)
-    {
-      glTexParameterfv((int) m_settings.Target,
-                       GL_TEXTURE_BORDER_COLOR,
-                       &(m_settings.borderColor[0]));
-    }
 
     m_initiated = true;
 
@@ -601,8 +598,10 @@ namespace ToolKit
 
   void RenderTarget::ReconstructIfNeeded(uint width, uint height)
   {
-    if (m_width != width || m_height != height)
+    if (!m_initiated || m_width != width || m_height != height)
+    {
       Reconstruct(width, height, m_settings);
+    }
   }
 
   const RenderTargetSettigs& RenderTarget::GetSettings() const

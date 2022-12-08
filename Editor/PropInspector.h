@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EditorViewport.h"
 #include "FolderWindow.h"
 #include "UI.h"
 
@@ -8,69 +9,57 @@
 
 namespace ToolKit
 {
+
+  class SceneRenderPass;
   namespace Editor
   {
 
     class View
     {
      public:
+      static void DropZone(
+          uint fallbackIcon,
+          const String& file,
+          std::function<void(const DirectoryEntry& entry)> dropAction,
+          const String& dropName = "");
+      static void DropSubZone(
+          const String& title,
+          uint fallbackIcon,
+          const String& file,
+          std::function<void(const DirectoryEntry& entry)> dropAction,
+          bool isEditable);
+      static bool IsTextInputFinalized();
+
+      View(const StringView viewName);
       virtual ~View()
       {
       }
       virtual void Show() = 0;
-      virtual void ShowVariant(ParameterVariant* var, ComponentPtr comp);
-      void ShowAnimControllerComponent(ParameterVariant* var, ComponentPtr cmp);
-      void ShowMaterialPtr(const String& uniqueName,
-                           const String& file,
-                           MaterialPtr& var);
-      void ShowMaterialVariant(const String& uniqueName,
-                               const String& file,
-                               ParameterVariant* var);
-
-      void DropZone(uint fallbackIcon,
-                    const String& file,
-                    std::function<void(const DirectoryEntry& entry)> dropAction,
-                    const String& dropName = "");
-
-      void DropSubZone(
-          const String& title,
-          uint fallbackIcon,
-          const String& file,
-          std::function<void(const DirectoryEntry& entry)> dropAction);
-
-     protected:
-      bool IsTextInputFinalized();
 
      public:
-      Entity* m_entity = nullptr;
-      int m_viewID     = 0;
+      Entity* m_entity     = nullptr;
+      int m_viewID         = 0;
+      TexturePtr m_viewIcn = nullptr;
+      const StringView m_viewName;
     };
 
-    class EntityView : public View
+    class PreviewViewport : public EditorViewport
     {
      public:
-      EntityView()
-      {
-        m_viewID = 1;
-      }
-      virtual ~EntityView()
-      {
-      }
-      virtual void Show();
-      virtual void ShowParameterBlock();
-      virtual bool ShowComponentBlock(ComponentPtr& comp);
+      PreviewViewport(uint width, uint height);
+      ~PreviewViewport();
+      void Show() override;
+      ScenePtr GetScene();
 
-     protected:
-      void ShowCustomData(String headerName,
-                          ParameterVariantRawPtrArray& vars,
-                          bool isListEditable);
-      ValueUpdateFn MultiUpdate(ParameterVariant* var);
-      void ShowMultiMaterialComponent(
-          ComponentPtr& comp, std::function<bool(const String&)> showCompFunc);
-      void ShowAABBOverrideComponent(
-          ComponentPtr& comp, std::function<bool(const String&)> showCompFunc);
+     private:
+      SceneRenderPass* m_renderPass;
+      Light* m_light;
+      float m_radius;
+      bool m_isLocked;
     };
 
+    typedef View* ViewRawPtr;
+    typedef std::vector<ViewRawPtr> ViewRawPtrArray;
     class PropInspector : public Window
     {
      public:
@@ -81,10 +70,22 @@ namespace ToolKit
       void Show() override;
       Type GetType() const override;
       void DispatchSignals() const override;
+      void SetMaterialView(MaterialPtr mat);
+      void SetMeshView(MeshPtr mesh);
 
      public:
-      EntityView* m_view;
+      ViewRawPtrArray m_views;
+      enum class ViewType
+      {
+        Entity,
+        Prefab,
+        CustomData,
+        Component,
+        Material,
+        Mesh,
+        ViewCount
+      };
+      ViewType m_activeView = ViewType::Entity;
     };
-
   } // namespace Editor
 } // namespace ToolKit

@@ -10,7 +10,7 @@
 #include "ImGui/imgui_stdlib.h"
 #include "Imgui/imgui_impl_opengl3.h"
 #include "Imgui/imgui_impl_sdl.h"
-#include "MaterialInspector.h"
+#
 #include "Mod.h"
 #include "OutlinerWindow.h"
 #include "OverlayUI.h"
@@ -85,6 +85,10 @@ namespace ToolKit
     TexturePtr UI::m_prefabIcn;
     TexturePtr UI::m_buildIcn;
     TexturePtr UI::m_addIcon;
+    TexturePtr UI::m_sphereIcon;
+    TexturePtr UI::m_cubeIcon;
+    TexturePtr UI::m_shaderBallIcon;
+    UI::AnchorPresetImages UI::m_anchorPresetIcons;
 
     void UI::Init()
     {
@@ -276,15 +280,12 @@ namespace ToolKit
       m_skyIcon = GetTextureManager()->Create<Texture>(
           TexturePath("Icons/sky.png", true));
       m_skyIcon->Init();
-
       m_closeIcon = GetTextureManager()->Create<Texture>(
           TexturePath("Icons/close.png", true));
       m_closeIcon->Init();
-
       m_phoneRotateIcon = GetTextureManager()->Create<Texture>(
           TexturePath("Icons/rotate-icon.png", true));
       m_phoneRotateIcon->Init();
-
       m_studioLightsToggleIcon = GetTextureManager()->Create<Texture>(
           TexturePath("Icons/studio_lights_toggle.png", true));
       m_studioLightsToggleIcon->Init();
@@ -294,13 +295,35 @@ namespace ToolKit
       m_prefabIcn = GetTextureManager()->Create<Texture>(
           TexturePath("Icons/scene_data.png", true));
       m_prefabIcn->Init();
-
       m_buildIcn = GetTextureManager()->Create<Texture>(
           TexturePath("Icons/build.png", true));
       m_buildIcn->Init();
       m_addIcon = GetTextureManager()->Create<Texture>(
           TexturePath("Icons/add.png", true));
       m_addIcon->Init();
+      m_sphereIcon = GetTextureManager()->Create<Texture>(
+          TexturePath("Icons/sphere.png", true));
+      m_sphereIcon->Init();
+      m_cubeIcon = GetTextureManager()->Create<Texture>(
+          TexturePath("Icons/cube.png", true));
+      m_cubeIcon->Init();
+      m_shaderBallIcon = GetTextureManager()->Create<Texture>(
+          TexturePath("Icons/shader-ball.png", true));
+      m_shaderBallIcon->Init();
+
+      for (uint anchorPresentIndx = 0;
+           anchorPresentIndx < AnchorPresetImages::presetCount;
+           anchorPresentIndx++)
+      {
+        TexturePtr& preset =
+            m_anchorPresetIcons.m_presetImages[anchorPresentIndx];
+        preset = GetTextureManager()->Create<Texture>(TexturePath(
+            "Icons/Anchor Presets/" +
+                String(m_anchorPresetIcons.m_presetNames[anchorPresentIndx]) +
+                ".png",
+            true));
+        preset->Init();
+      }
     }
 
     void UI::InitTheme()
@@ -389,14 +412,6 @@ namespace ToolKit
           1.00f, 0.60f, 0.00f, 1.00f};
       style->Colors[ImGuiCol_TextSelectedBg] = {
           0.18431373f, 0.39607847f, 0.79215693f, 0.90f};
-
-      // Reverse gamma correction
-      for (int i = 0; i < 55; ++i)
-      {
-        style->Colors[i].x = std::powf(style->Colors[i].x, 2.2f);
-        style->Colors[i].y = std::powf(style->Colors[i].y, 2.2f);
-        style->Colors[i].z = std::powf(style->Colors[i].z, 2.2f);
-      }
     }
 
     void UI::InitSettings()
@@ -483,10 +498,6 @@ namespace ToolKit
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
       ImGui::EndFrame();
 
-      ImGui::UpdatePlatformWindows();
-      ImGui::RenderPlatformWindowsDefault();
-      SDL_GL_MakeCurrent(g_window, g_context);
-
       // UI deferred functions.
       for (auto& action : m_postponedActions)
       {
@@ -546,6 +557,11 @@ namespace ToolKit
         if (ImGui::MenuItem("SaveAs"))
         {
           g_app->OnSaveAsScene();
+        }
+
+        if (ImGui::MenuItem("Save All Resources"))
+        {
+          g_app->SaveAllResources();
         }
         ImGui::EndMenu();
       }
@@ -612,9 +628,8 @@ namespace ToolKit
 
         if (ImGui::MenuItem("Add Browser", "Alt+B"))
         {
-          FolderWindow* wnd = new FolderWindow();
-          wnd->m_name = g_assetBrowserStr + " " + std::to_string(wnd->m_id);
-          wnd->Iterate(ResourcePath(), true);
+          FolderWindow* wnd = new FolderWindow(true);
+          wnd->m_name = g_assetBrowserStr + "##" + std::to_string(wnd->m_id);
           g_app->m_windows.push_back(wnd);
         }
 
@@ -645,14 +660,6 @@ namespace ToolKit
                           !g_app->GetPropInspector()->IsVisible()))
       {
         g_app->GetPropInspector()->SetVisibility(true);
-      }
-
-      if (ImGui::MenuItem("Material Inspector",
-                          "Alt+R",
-                          nullptr,
-                          !g_app->GetMaterialInspector()->IsVisible()))
-      {
-        g_app->GetMaterialInspector()->SetVisibility(true);
       }
 
       if (PluginWindow* wnd = g_app->GetWindow<PluginWindow>("Plugin"))
@@ -730,7 +737,7 @@ namespace ToolKit
     void UI::ShowImportWindow()
     {
       static String load;
-      if (!ImportData.showImportWindow || ImportData.files.empty())
+      if (!ImportData.ShowImportWindow || ImportData.Files.empty())
       {
         load.clear();
         return;
@@ -743,7 +750,7 @@ namespace ToolKit
         importList.open(load, std::ios::out);
         if (importList.is_open())
         {
-          for (String& file : ImportData.files)
+          for (String& file : ImportData.Files)
           {
             if (g_app->CanImport(file))
             {
@@ -755,10 +762,10 @@ namespace ToolKit
 
       if (g_app->m_importSlient)
       {
-        g_app->Import(load, ImportData.subDir, ImportData.overwrite);
+        g_app->Import(load, ImportData.SubDir, ImportData.Overwrite);
         load.clear();
-        ImportData.files.clear();
-        ImportData.showImportWindow = false;
+        ImportData.Files.clear();
+        ImportData.ShowImportWindow = false;
         return;
       }
 
@@ -767,31 +774,32 @@ namespace ToolKit
               "Import", NULL, ImGuiWindowFlags_AlwaysAutoResize))
       {
         ImGui::Text("Import file: \n\n");
-        for (size_t i = 0; i < ImportData.files.size(); i++)
+        for (size_t i = 0; i < ImportData.Files.size(); i++)
         {
-          ImGui::Text("%s", ImportData.files[i].c_str());
+          ImGui::Text("%s", ImportData.Files[i].c_str());
         }
         ImGui::Separator();
 
         static StringArray fails;
-        if (!ImportData.files.empty() && fails.empty())
+        if (!ImportData.Files.empty() && fails.empty())
         {
-          for (int i = static_cast<int>(ImportData.files.size()) - 1; i >= 0;
+          for (int i = static_cast<int>(ImportData.Files.size()) - 1; i >= 0;
                i--)
           {
-            bool canImp = g_app->CanImport(ImportData.files[i]);
+            bool canImp = g_app->CanImport(ImportData.Files[i]);
             if (!canImp)
             {
-              fails.push_back(ImportData.files[i]);
-              ImportData.files.erase(ImportData.files.begin() + i);
+              fails.push_back(ImportData.Files[i]);
+              ImportData.Files.erase(ImportData.Files.begin() + i);
             }
           }
         }
 
         if (!fails.empty())
         {
-          ImGui::Text("Fallowing imports failed due to:\nFile format is"
-                      " not supported.\nSuported formats are fbx, glb, obj.");
+          ImGui::Text(
+              "Following imports failed due to:\nFile format is not "
+              "supported\nSupported formats: fbx, glb, obj, png, hdri & jpg");
           for (String& file : fails)
           {
             ImGui::Text("%s", file.c_str());
@@ -799,30 +807,75 @@ namespace ToolKit
           ImGui::Separator();
         }
 
+        String importFolder;
+        if (!ImportData.ActiveView->m_currRoot)
+        {
+          importFolder = ImportData.ActiveView->m_folder;
+          if (ImportData.SubDir.length())
+          {
+            importFolder += GetPathSeparatorAsStr();
+          }
+        }
+        importFolder += ImportData.SubDir;
+
+        ImportData.ActiveView->Refresh();
+        for (int i = static_cast<int>(ImportData.Files.size()) - 1; i >= 0; --i)
+        {
+          const String& file = ImportData.Files[i];
+          String ext;
+          DecomposePath(file, nullptr, nullptr, &ext);
+
+          if (SupportedImageFormat(ext))
+          {
+            String viewPath    = ImportData.ActiveView->GetPath();
+            String texturePath = TexturePath("");
+            // Remove last string (PathSeperator)
+            texturePath.pop_back();
+            if (viewPath.find(texturePath) != String::npos)
+            {
+              // All images are copied to the active subfolder of Textures
+              const String& dst = ImportData.ActiveView->GetPath();
+              std::filesystem::copy(
+                  file, dst, std::filesystem::copy_options::overwrite_existing);
+            }
+            else
+            {
+              g_app->m_statusMsg = "Textures should be dropped to a folder "
+                                   "from Textures resource folder";
+            }
+            ImportData.Files.erase(ImportData.Files.begin() + i);
+          }
+        }
+        if (ImportData.Files.size() == 0)
+        {
+          ImGui::EndPopup();
+          ImportData.ShowImportWindow = false;
+          ImGui::CloseCurrentPopup();
+          return;
+        }
+
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
-        ImGui::Checkbox("Override", &ImportData.overwrite);
+        ImGui::Checkbox("Override", &ImportData.Overwrite);
         ImGui::PushItemWidth(100);
-        ImGui::InputFloat("Scale", &ImportData.scale);
+        ImGui::InputFloat("Scale", &ImportData.Scale);
         ImGui::PopItemWidth();
         ImGui::PopStyleVar();
 
-        ImGui::InputTextWithHint("Subdir", "optional", &ImportData.subDir);
-
+        ImGui::InputTextWithHint("Subdir", "optional", &ImportData.SubDir);
         if (ImGui::Button("OK", ImVec2(120, 0)))
         {
-          if (g_app->Import(load, ImportData.subDir, ImportData.overwrite) ==
-              -1)
+          if (g_app->Import(load, importFolder, ImportData.Overwrite) == -1)
           {
             // Fall back to search.
             ImGui::EndPopup();
-            ImportData.showImportWindow = false;
+            ImportData.ShowImportWindow = false;
             return;
           }
 
           load.clear();
           fails.clear();
-          ImportData.files.clear();
-          ImportData.showImportWindow = false;
+          ImportData.Files.clear();
+          ImportData.ShowImportWindow = false;
           ImGui::CloseCurrentPopup();
         }
         ImGui::SetItemDefaultFocus();
@@ -831,8 +884,8 @@ namespace ToolKit
         {
           load.clear();
           fails.clear();
-          ImportData.files.clear();
-          ImportData.showImportWindow = false;
+          ImportData.Files.clear();
+          ImportData.ShowImportWindow = false;
           ImGui::CloseCurrentPopup();
         }
 
@@ -902,15 +955,15 @@ namespace ToolKit
 
         if (ImGui::Button("Search", ImVec2(120, 0)))
         {
-          g_app->Import("", ImportData.subDir, ImportData.overwrite);
-          ImportData.files.clear();
+          g_app->Import("", ImportData.SubDir, ImportData.Overwrite);
+          ImportData.Files.clear();
           ImGui::CloseCurrentPopup();
         }
         ImGui::SetItemDefaultFocus();
         ImGui::SameLine();
         if (ImGui::Button("Abort", ImVec2(120, 0)))
         {
-          ImportData.files.clear();
+          ImportData.Files.clear();
           SearchFileData.missingFiles.clear();
           SearchFileData.showSearchFileWindow = false;
           ImGui::CloseCurrentPopup();
@@ -1150,6 +1203,11 @@ namespace ToolKit
       ImGui::Text(text.c_str());
     }
 
+    bool UI::IsKeyboardCaptured()
+    {
+      return ImGui::GetIO().WantCaptureKeyboard;
+    }
+
     Window::Window()
     {
       m_size = UVec2(640, 480);
@@ -1190,6 +1248,12 @@ namespace ToolKit
       return m_active && m_visible && m_mouseHover;
     }
 
+    bool Window::IsViewport() const
+    {
+      Type t = GetType();
+      return t == Type::Viewport || t == Type::Viewport2d;
+    }
+
     void Window::DispatchSignals() const
     {
     }
@@ -1206,7 +1270,7 @@ namespace ToolKit
         doc->append_node(node);
       }
 
-      WriteAttr(node, doc, "name", m_name);
+      WriteAttr(node, doc, XmlNodeName.data(), m_name);
       WriteAttr(node, doc, "id", std::to_string(m_id));
       WriteAttr(node, doc, "type", std::to_string(static_cast<int>(GetType())));
       WriteAttr(
@@ -1231,7 +1295,7 @@ namespace ToolKit
         node = doc->first_node("Window");
       }
 
-      ReadAttr(node, "name", m_name);
+      ReadAttr(node, XmlNodeName.data(), m_name);
       ReadAttr(node, "id", m_id);
       // Type is determined by the corrsesponding constructor.
       ReadAttr(node, "visible", m_visible);
@@ -1316,7 +1380,7 @@ namespace ToolKit
 
     void Window::ModShortCutSignals(const IntArray& mask) const
     {
-      if (!CanDispatchSignals())
+      if (!CanDispatchSignals() || UI::IsKeyboardCaptured())
       {
         return;
       }
@@ -1369,13 +1433,15 @@ namespace ToolKit
 
       if (ImGui::IsKeyPressed(ImGuiKey_F, false) && !Exist(mask, ImGuiKey_F))
       {
-        if (Window* wnd = g_app->GetOutliner())
+        if (Entity* ntt = currSecne->GetCurrentSelection())
         {
-          if (Entity* ntt = currSecne->GetCurrentSelection())
+          if (Window* wnd = g_app->GetOutliner())
           {
             OutlinerWindow* outliner = static_cast<OutlinerWindow*>(wnd);
             outliner->Focus(ntt);
           }
+          // Focus the object in the scene
+          g_app->FocusEntity(ntt);
         }
       }
 
@@ -1392,6 +1458,31 @@ namespace ToolKit
           {
             ActionManager::GetInstance()->Undo();
           }
+        }
+      }
+
+      if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+      {
+        g_app->GetCurrentScene()->ClearSelection();
+      }
+
+      if (ImGui::IsKeyDown(ImGuiKey_ModCtrl) &&
+          ImGui::IsKeyPressed(ImGuiKey_S, false))
+      {
+        g_app->GetCurrentScene()->ClearSelection();
+        g_app->OnSaveScene();
+      }
+
+      if (ImGui::IsKeyPressed(ImGuiKey_F5, false))
+      {
+        if (g_app->m_gameMod == GameMod::Playing ||
+            g_app->m_gameMod == GameMod::Paused)
+        {
+          g_app->SetGameMod(GameMod::Stop);
+        }
+        else
+        {
+          g_app->SetGameMod(GameMod::Playing);
         }
       }
     }
