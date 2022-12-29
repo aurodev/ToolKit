@@ -63,6 +63,17 @@ namespace ToolKit
   TK_API String ConcatPaths(const StringArray& entries);
   TK_API String GetRelativeResourcePath(const String& path);
 
+  /**
+   * Checks if a resource has default path.
+   * @return true if the resource is from Engine's directory.
+   */
+  TK_API bool IsDefaultResource(const String& path);
+
+  /**
+  * Extracts the file name with the extension from a path.
+  */
+  TK_API String GetFileName(const String& path);
+
   enum class ResourceType;
   TK_API String CreatePathFromResourceType(const String& file,
                                            ResourceType type);
@@ -95,6 +106,8 @@ namespace ToolKit
   TK_API void ReplaceCharInPlace(String& subject,
                                  const char search,
                                  const char replace);
+
+  TK_API int CountChar(const String& str, const char chr);
 
   /**
    * Transform ascii chars to lower. Intended usage is extention comparison.
@@ -133,15 +146,6 @@ namespace ToolKit
 
   // {copies} First one is the copy root, fallowing are attached children.
   TK_API Entity* DeepCopy(Entity* root, EntityRawPtrArray& copies);
-
-  // Sort entities  by distance (from boundary center)
-  // in ascending order to camera. Accounts for isometric camera.
-  TK_API void StableSortByDistanceToCamera(EntityRawPtrArray& entities,
-                                           const Camera* cam);
-
-  // Sort entities by their material's render state's priority in
-  // descending order.
-  TK_API void StableSortByMaterialPriority(EntityRawPtrArray& entities);
 
   // Memory operations.
   ///////////////////////////////////////////////////////

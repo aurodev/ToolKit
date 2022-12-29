@@ -1,5 +1,6 @@
 #include "PopupWindows.h"
 
+#include "App.h"
 #include "ImGui/imgui_stdlib.h"
 
 #include <algorithm>
@@ -33,18 +34,27 @@ namespace ToolKit
           ImVec2(0.5f, 0.5f));
 
       ImGui::OpenPopup(m_name.c_str());
-      if (ImGui::BeginPopupModal(
-              m_name.c_str(), NULL, ImGuiWindowFlags_AlwaysAutoResize))
+      if (ImGui::BeginPopupModal(m_name.c_str(),
+                                 NULL,
+                                 ImGuiWindowFlags_AlwaysAutoResize))
       {
         if (ImGui::IsWindowAppearing())
         {
           ImGui::SetKeyboardFocusHere();
         }
 
-        ImGui::InputTextWithHint(m_inputLabel.c_str(),
-                                 m_hint.c_str(),
-                                 &m_inputVal,
-                                 ImGuiInputTextFlags_AutoSelectAll);
+        ImGui::InputTextWithHint(
+            m_inputLabel.c_str(),
+            m_hint.c_str(),
+            &m_inputVal,
+            ImGuiInputTextFlags_AutoSelectAll |
+                ImGuiInputTextFlags_CallbackCharFilter,
+            [](ImGuiInputTextCallbackData* data) -> int
+            {
+              return (reinterpret_cast<StringInputWindow*>(data->UserData))
+                  ->FilterChars(data);
+            },
+            reinterpret_cast<void*>(this));
 
         // Center buttons.
         ImGui::BeginTable("##FilterZoom",
@@ -87,6 +97,18 @@ namespace ToolKit
       }
     }
 
+    int StringInputWindow::FilterChars(ImGuiInputTextCallbackData* data)
+    {
+      if (std::find(m_illegalChars.begin(),
+                    m_illegalChars.end(),
+                    (char) data->EventChar) != m_illegalChars.end())
+      {
+        g_app->m_statusMsg = "Invalid character.";
+        return 1;
+      }
+      return 0;
+    }
+
     YesNoWindow::YesNoWindow(const String& name, const String& msg)
     {
       m_name = name;
@@ -120,8 +142,9 @@ namespace ToolKit
           ImVec2(0.5f, 0.5f));
 
       ImGui::OpenPopup(m_name.c_str());
-      if (ImGui::BeginPopupModal(
-              m_name.c_str(), NULL, ImGuiWindowFlags_AlwaysAutoResize))
+      if (ImGui::BeginPopupModal(m_name.c_str(),
+                                 NULL,
+                                 ImGuiWindowFlags_AlwaysAutoResize))
       {
         if (!m_msg.empty())
         {
@@ -213,8 +236,9 @@ namespace ToolKit
           ImVec2(0.5f, 0.5f));
 
       ImGui::OpenPopup(m_name.c_str());
-      if (ImGui::BeginPopupModal(
-              m_name.c_str(), NULL, ImGuiWindowFlags_AlwaysAutoResize))
+      if (ImGui::BeginPopupModal(m_name.c_str(),
+                                 NULL,
+                                 ImGuiWindowFlags_AlwaysAutoResize))
       {
         if (!m_msg.empty())
         {
@@ -222,10 +246,11 @@ namespace ToolKit
         }
 
         uint columnCount = (uint) m_buttons.size() + 2;
-        columnCount += m_showCancel ? 1 : 0;
+        columnCount      += m_showCancel ? 1 : 0;
         // Center buttons.
-        ImGui::BeginTable(
-            "##FilterZoom", columnCount, ImGuiTableFlags_SizingFixedFit);
+        ImGui::BeginTable("##FilterZoom",
+                          columnCount,
+                          ImGuiTableFlags_SizingFixedFit);
 
         ImGui::TableSetupColumn("##spaceL", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("##yes");

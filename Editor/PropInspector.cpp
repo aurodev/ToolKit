@@ -7,11 +7,14 @@
 #include "CustomDataView.h"
 #include "EditorPass.h"
 #include "EntityView.h"
+#include "ImGui/imconfig.h"
+#include "ImGui/imgui_internal.h"
 #include "ImGui/imgui_stdlib.h"
 #include "MaterialView.h"
 #include "MeshView.h"
 #include "Prefab.h"
 #include "PrefabView.h"
+#include "RenderSettingsView.h"
 #include "TransformMod.h"
 #include "Util.h"
 
@@ -54,7 +57,7 @@ namespace ToolKit
           fileExist = true;
         }
       }
-      uint iconId = fallbackIcon;
+      uint iconId      = fallbackIcon;
 
       ImVec2 texCoords = ImVec2(1.0f, 1.0f);
       if (RenderTargetPtr thumb = dirEnt.GetThumbnail())
@@ -103,7 +106,8 @@ namespace ToolKit
         info = "";
         if (ResourceManager* man = dirEnt.GetManager())
         {
-          auto textureRepFn = [&info, file](const TexturePtr& t) -> void {
+          auto textureRepFn = [&info, file](const TexturePtr& t) -> void
+          {
             if (t)
             {
               String file, ext;
@@ -176,9 +180,7 @@ namespace ToolKit
       }
     }
 
-    View::View(const StringView viewName) : m_viewName(viewName)
-    {
-    }
+    View::View(const StringView viewName) : m_viewName(viewName) {}
 
     // PreviewViewport
     //////////////////////////////////////////////////////////////////////////
@@ -186,69 +188,98 @@ namespace ToolKit
     PreviewViewport::PreviewViewport(uint width, uint height)
         : EditorViewport((float) width, (float) height)
     {
-      GetCamera()->m_node->Translate(Vec3(0, 0, 5));
-      DirectionComponentPtr directionComp =
-          GetCamera()->GetComponent<DirectionComponent>();
-      directionComp->LookAt(Vec3(0, 0, 0));
-      m_renderPass                                  = new SceneRenderPass;
-      m_renderPass->m_params.renderPassParams.Scene = std::make_shared<Scene>();
-      m_renderPass->m_params.renderPassParams.FrameBuffer      = m_framebuffer;
-      m_renderPass->m_params.renderPassParams.Cam              = GetCamera();
-      m_renderPass->m_params.renderPassParams.ClearFrameBuffer = true;
-
-      float intensity         = 1.5f;
       DirectionalLight* light = new DirectionalLight();
-      light->SetColorVal(Vec3(0.55f));
-      light->SetIntensityVal(intensity);
-      light->GetComponent<DirectionComponent>()->Yaw(glm::radians(-20.0f));
-      light->GetComponent<DirectionComponent>()->Pitch(glm::radians(-20.0f));
+      light->SetPCFRadiusVal(0.001f);
+      light->SetShadowResVal(1024.0f);
+      light->SetPCFSamplesVal(32);
+      light->SetLightBleedingReductionVal(0.1f);
+
+      light->SetColorVal(Vec3(1.0f));
+      light->SetIntensityVal(1.0f);
       light->SetCastShadowVal(true);
-      m_light = light;
 
-      m_renderPass->m_params.renderPassParams.LightOverride = {light};
-      m_renderPass->m_params.shadowPassParams.Lights =
-          m_renderPass->m_params.renderPassParams.LightOverride;
+      DirectionComponentPtr directionComp =
+          light->GetComponent<DirectionComponent>();
+
+      directionComp->Yaw(glm::radians(-20.0f));
+      directionComp->Pitch(glm::radians(-20.0f));
+      m_light                                = light;
+
+      m_renderPass.m_params.Cam              = GetCamera();
+      m_renderPass.m_params.ClearFramebuffer = true;
+      m_renderPass.m_params.Lights           = {m_light};
+      m_renderPass.m_params.MainFramebuffer  = m_framebuffer;
+      m_renderPass.m_params.Scene            = std::make_shared<Scene>();
     }
 
-    PreviewViewport::~PreviewViewport()
-    {
-      SafeDel(m_renderPass);
-      SafeDel(m_light);
-    }
+    PreviewViewport::~PreviewViewport() { SafeDel(m_light); }
 
     void PreviewViewport::Show()
     {
-      RenderTargetPtr colorRT = m_framebuffer->GetAttachment(
-          Framebuffer::Attachment::ColorAttachment0);
-      if (colorRT == nullptr)
+      if (m_needsResize)
       {
-        return;
+        OnResizeContentArea((float) m_size.x, (float) m_size.y);
       }
 
-      ComitResize();
       HandleStates();
       DrawCommands();
 
-      m_renderPass->m_params.shadowPassParams.Entities.clear();
-      for (Entity* ntt :
-           m_renderPass->m_params.renderPassParams.Scene->GetEntities())
+      m_renderPass.m_params.MainFramebuffer = m_framebuffer;
+      EntityRawPtrArray& entities           = GetScene()->AccessEntityArray();
+      for (Entity* ntt : entities)
       {
+        MeshComponentPtr mc = ntt->GetMeshComponent();
+        if (!mc)
+        {
+          continue;
+        }
+
         if (ntt->GetVisibleVal())
         {
-          m_renderPass->m_params.shadowPassParams.Entities.push_back(ntt);
+          mc->SetCastShadowVal(true);
+        }
+        else
+        {
+          mc->SetCastShadowVal(false);
         }
       }
-      m_renderPass->Render();
-      FramebufferSettings fbs = m_framebuffer->GetSettings();
-      ImGui::Image(Convert2ImGuiTexture(colorRT),
-                   ImVec2((float) fbs.width, (float) fbs.height),
-                   ImVec2(0.0f, 0.0f),
-                   ImVec2(1.0f, -1.0f));
+      m_renderPass.Render();
+
+      // Render color attachment as rounded image
+      FramebufferSettings fbSettings = m_framebuffer->GetSettings();
+      Vec2 imageSize        = Vec2(fbSettings.width, fbSettings.height);
+      Vec2 currentCursorPos = Vec2(ImGui::GetWindowContentRegionMin()) +
+                              Vec2(ImGui::GetCursorPos()) +
+                              Vec2(ImGui::GetWindowPos());
+      ImRect bb(currentCursorPos, currentCursorPos + imageSize);
+      ImGui::ItemSize(bb);
+      ImGui::ItemAdd(bb, 0);
+      ImGui::GetWindowDrawList()->AddImageRounded(
+          Convert2ImGuiTexture(m_framebuffer->GetAttachment(
+              Framebuffer::Attachment::ColorAttachment0)),
+          bb.Min,
+          bb.Max,
+          ImVec2(0.0f, 0.0f),
+          ImVec2(1.0f, -1.0f),
+          ImGui::GetColorU32(ImVec4(1, 1, 1, 1)),
+          5.0f);
     }
 
-    ScenePtr PreviewViewport::GetScene()
+    ScenePtr PreviewViewport::GetScene() { return m_renderPass.m_params.Scene; }
+
+    void PreviewViewport::ResetCamera()
     {
-      return m_renderPass->m_params.renderPassParams.Scene;
+      Camera* cam = GetCamera();
+      cam->m_node->SetTranslation(Vec3(3.0f, 5.0f, 4.0f));
+      cam->GetComponent<DirectionComponent>()->LookAt(Vec3(0.0f));
+    }
+
+    void PreviewViewport::ResizeWindow(uint width, uint height)
+    {
+      if (width != m_size.x || height != m_size.y)
+      {
+        EditorViewport::ResizeWindow(width, height);
+      }
     }
 
     // PropInspector
@@ -262,12 +293,13 @@ namespace ToolKit
     PropInspector::PropInspector()
     {
       m_views.resize((uint) ViewType::ViewCount);
-      m_views[(uint) ViewType::Entity]     = new EntityView();
-      m_views[(uint) ViewType::Prefab]     = new PrefabView();
-      m_views[(uint) ViewType::CustomData] = new CustomDataView();
-      m_views[(uint) ViewType::Component]  = new ComponentView();
-      m_views[(uint) ViewType::Material]   = new MaterialView();
-      m_views[(uint) ViewType::Mesh]       = new MeshView();
+      m_views[(uint) ViewType::Entity]         = new EntityView();
+      m_views[(uint) ViewType::Prefab]         = new PrefabView();
+      m_views[(uint) ViewType::CustomData]     = new CustomDataView();
+      m_views[(uint) ViewType::Component]      = new ComponentView();
+      m_views[(uint) ViewType::Material]       = new MaterialView();
+      m_views[(uint) ViewType::Mesh]           = new MeshView();
+      m_views[(uint) ViewType::RenderSettings] = new RenderSettingsView();
     }
 
     PropInspector::~PropInspector()
@@ -283,23 +315,26 @@ namespace ToolKit
       ImVec4 windowBg  = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
       ImVec4 childBg   = ImGui::GetStyleColorVec4(ImGuiCol_ChildBg);
       ImGuiStyle style = ImGui::GetStyle();
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
       ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                          ImVec2(2, style.ItemSpacing.y));
-      if (ImGui::Begin(m_name.c_str(), &m_visible))
+                          ImVec2(2.0f, style.ItemSpacing.y));
+      if (ImGui::Begin(m_name.c_str(),
+                       &m_visible,
+                       ImGuiWindowFlags_NoScrollWithMouse))
       {
         HandleStates();
 
         const ImVec2 windowSize      = ImGui::GetWindowSize();
-        const ImVec2 sidebarIconSize = ImVec2(18, 18);
+        const ImVec2 sidebarIconSize = ImVec2(18.0f, 18.0f);
 
         // Show ViewType sidebar
-        ImGui::GetStyle()    = style;
-        const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
+        ImGui::GetStyle()            = style;
+        const ImVec2 spacing         = ImGui::GetStyle().ItemSpacing;
         const ImVec2 sidebarSize =
             ImVec2(spacing.x + sidebarIconSize.x + spacing.x, windowSize.y);
-        if (ImGui::BeginChildFrame(
-                ImGui::GetID("ViewTypeSidebar"), sidebarSize, 0))
+        if (ImGui::BeginChildFrame(ImGui::GetID("ViewTypeSidebar"),
+                                   sidebarSize,
+                                   0))
         {
           for (uint viewIndx = 0; viewIndx < m_views.size(); viewIndx++)
           {
@@ -313,8 +348,7 @@ namespace ToolKit
             {
               ImGui::PushStyleColor(ImGuiCol_Button, childBg);
             }
-            if (ImGui::ImageButton(reinterpret_cast<void*>(
-                                       (intptr_t) view->m_viewIcn->m_textureId),
+            if (ImGui::ImageButton(Convert2ImGuiTexture(view->m_viewIcn),
                                    sidebarIconSize))
             {
               m_activeView = (ViewType) viewIndx;
@@ -323,8 +357,8 @@ namespace ToolKit
                            view->m_viewName.data());
             ImGui::PopStyleColor(1);
           }
-          ImGui::EndChildFrame();
         }
+        ImGui::EndChildFrame();
 
         ImGui::SameLine();
 
@@ -333,8 +367,8 @@ namespace ToolKit
                 Vec2(windowSize.x - sidebarSize.x - spacing.x, windowSize.y)))
         {
           m_views[(uint) m_activeView]->Show();
-          ImGui::EndChild();
         }
+        ImGui::EndChild();
       }
       ImGui::End();
       ImGui::PopStyleVar(2);
@@ -345,10 +379,8 @@ namespace ToolKit
       return Window::Type::Inspector;
     }
 
-    void PropInspector::DispatchSignals() const
-    {
-      ModShortCutSignals();
-    }
+    void PropInspector::DispatchSignals() const { ModShortCutSignals(); }
+
     void PropInspector::SetMaterialView(MaterialPtr mat)
     {
       m_activeView          = ViewType::Material;
@@ -356,6 +388,7 @@ namespace ToolKit
       MaterialView* matView = (MaterialView*) m_views[matViewIndx];
       matView->SetMaterial(mat);
     }
+
     void PropInspector::SetMeshView(MeshPtr mesh)
     {
       m_activeView       = ViewType::Mesh;

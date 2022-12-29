@@ -5,14 +5,26 @@
 	<include name = "camera.shader" />
 	<include name = "AO.shader" />
 	<uniform name = "CamData" />
-	<uniform name = "LightingOnly" />
+	<uniform name = "useAlphaMask" />
+	<uniform name = "alphaMaskTreshold" />
+	<uniform name = "DiffuseTextureInUse" />
+	<uniform name = "Color" />
+	<uniform name = "emissiveColor" />
+	<uniform name = "emissiveTextureInUse" />
 	<source>
 	<!--
 		#version 300 es
 		precision highp float;
 
 		uniform sampler2D s_texture0;
+		uniform sampler2D s_texture1;
 		uniform int LightingOnly;
+		uniform int useAlphaMask;
+		uniform float alphaMaskTreshold;
+		uniform int DiffuseTextureInUse;
+		uniform vec4 Color;
+		uniform int emissiveTextureInUse;
+		uniform vec3 emissiveColor;
 
 		in vec3 v_pos;
 		in vec3 v_normal;
@@ -22,13 +34,32 @@
 
 		void main()
 		{
-			vec4 objectColor = texture(s_texture0, v_texture);
-			if(objectColor.a < 0.1f){
-				discard;
+			vec4 color;
+			if(DiffuseTextureInUse > 0)
+			{
+		  	color = texture(s_texture0, v_texture);
+			}
+			else
+			{
+				color = Color;
+			}
+			vec3 emissive;
+			if(emissiveTextureInUse > 0){
+				emissive = texture(s_texture1, v_texture).xyz;
+			}
+			else{
+				emissive = emissiveColor;
+			}
+
+			if (useAlphaMask == 1)
+			{
+				if(color.a < alphaMaskTreshold){
+					discard;
+				}
 			}
 			if (LightingOnly == 1)
 			{
-				objectColor.xyz = vec3(1.0);
+				color.xyz = vec3(1.0);
 			}
 
 			vec3 n = normalize(v_normal);
@@ -40,7 +71,7 @@
 
 			// float ambientOcclusion = AmbientOcclusion();
 
-			fragColor = vec4(irradiance, 1.0) * objectColor;
+			fragColor = (vec4(irradiance, 1.0) * color) + vec4(emissive, 0.0f);
 		}
 	-->
 	</source>

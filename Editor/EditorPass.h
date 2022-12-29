@@ -4,6 +4,7 @@
 #include "Global.h"
 #include "Pass.h"
 #include "Primative.h"
+#include "PostProcessPass.h"
 
 namespace ToolKit
 {
@@ -33,6 +34,33 @@ namespace ToolKit
       SpherePtr m_depthMaskSphere = nullptr;
       Camera* m_camera            = nullptr;
     };
+
+    struct SingleMatForwardRenderPassParams
+    {
+      ForwardRenderPassParams ForwardParams;
+      ShaderPtr OverrideFragmentShader;
+    };
+
+    // Render whole scene in forward renderer with a single override material
+    struct SingleMatForwardRenderPass : public ForwardRenderPass
+    {
+     public:
+      SingleMatForwardRenderPass();
+      explicit SingleMatForwardRenderPass(
+          const SingleMatForwardRenderPassParams& params);
+
+      void Render() override;
+      void PreRender() override;
+
+     public:
+      SingleMatForwardRenderPassParams m_params;
+
+     private:
+      MaterialPtr m_overrideMat = nullptr;
+    };
+
+    typedef std::shared_ptr<SingleMatForwardRenderPass>
+        SingleMatForwardRenderPassPtr;
 
     /**
      * Enumeration for available render modes for the editor.
@@ -64,9 +92,10 @@ namespace ToolKit
 
     struct EditorRenderPassParams
     {
-      class App* App                 = nullptr;
-      class EditorViewport* Viewport = nullptr;
-      EditorLitMode LitMode          = EditorLitMode::EditorLit;
+      class App* App                               = nullptr;
+      class EditorViewport* Viewport               = nullptr;
+      EditorLitMode LitMode                        = EditorLitMode::EditorLit;
+      TonemapMethod tonemapping                    = TonemapMethod::Aces;
     };
 
     class Technique
@@ -107,28 +136,22 @@ namespace ToolKit
       /**
        * Parent Node that m_editorLights are attached to.
        */
-      Node* m_lightNode = nullptr;
-      /**
-       * Override material for EditorLitMode::LightComplexity.
-       */
-      MaterialPtr m_lightComplexityOverride = nullptr;
-      /**
-       * Override material for EditorLitMode::LightingOnly.
-       */
-      MaterialPtr m_lightingOnlyOverride = nullptr;
+      Node* m_lightNode           = nullptr;
       /**
        * Override material for EditorLitMode::Unlit.
        */
       MaterialPtr m_unlitOverride = nullptr;
 
-      bool m_overrideDiffuseTexture = false;
       SceneRenderPass m_scenePass;
-      RenderPass m_editorPass;
+      ForwardRenderPass m_editorPass;
       GizmoPass m_gizmoPass;
+      TonemapPass m_tonemapPass;
       GammaPass m_gammaPass;
+      BloomPass m_bloomPass;
+      SSAOPass m_ssaoPass;
       OutlinePass m_outlinePass;
-      Camera* m_camera             = nullptr;
-      EditorScenePtr m_editorScene = nullptr;
+      SingleMatForwardRenderPass m_singleMatRenderer;
+      Camera* m_camera = nullptr;
 
       /**
        * Selected entity list

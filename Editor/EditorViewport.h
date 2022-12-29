@@ -50,7 +50,6 @@ namespace ToolKit
       // Editor functions
       void GetContentAreaScreenCoordinates(Vec2* min, Vec2* max) const;
       void SetCamera(Camera* cam) override;
-      void ResetSelectedRenderTarget(const RenderTargetSettigs& settings);
 
      protected:
       RenderTargetSettigs GetRenderTargetSettings() override;
@@ -64,7 +63,7 @@ namespace ToolKit
       void UpdateSnaps();
 
       // Mods.
-      void FpsNavigationMode(float deltaTime);
+      void FpsNavigationMod(float deltaTime);
       void OrbitPanMod(float deltaTime);
       void AdjustZoom(float delta) override;
 
@@ -94,8 +93,6 @@ namespace ToolKit
       int m_additionalWindowFlags       = 0;
       bool m_orbitLock                  = false;
       Vec3 m_snapDeltas; // X: Translation, Y: Rotation, Z: Scale
-      FramebufferPtr m_selectedFramebuffer = nullptr;
-      RenderTargetPtr m_selectedStencilRT  = nullptr;
 
       // UI Draw commands.
       std::vector<std::function<void(ImDrawList*)>> m_drawCommands;
@@ -104,11 +101,11 @@ namespace ToolKit
       Vec2 m_contentAreaMin;
       Vec2 m_contentAreaMax;
       IVec2 m_mousePosBegin;
+      bool m_needsResize = false;
 
      private:
       // States.
       bool m_relMouseModBegin = true;
-      bool m_needsResize      = false;
     };
 
   } // namespace Editor

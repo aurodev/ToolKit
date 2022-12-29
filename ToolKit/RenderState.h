@@ -8,7 +8,9 @@ namespace ToolKit
   enum class BlendFunction
   {
     NONE,
-    SRC_ALPHA_ONE_MINUS_SRC_ALPHA
+    SRC_ALPHA_ONE_MINUS_SRC_ALPHA,
+    ALPHA_MASK,
+    ONE_TO_ONE
   };
 
   enum class DrawType
@@ -43,7 +45,9 @@ namespace ToolKit
    public:
     CullingType cullMode        = CullingType::Back;
     bool depthTestEnabled       = true;
+    GraphicTypes depthFunction  = GraphicTypes::FuncLess;
     BlendFunction blendFunction = BlendFunction::NONE;
+    float alphaMaskTreshold     = 0.001f;
     DrawType drawType           = DrawType::Triangle;
     uint diffuseTexture         = 0;
     bool diffuseTextureInUse    = false;
@@ -51,13 +55,19 @@ namespace ToolKit
     bool cubeMapInUse           = false;
     float lineWidth             = 1.0f;
     VertexLayout vertexLayout   = VertexLayout::None;
-    bool IBLInUse = false; // ONLY Renderer class edits and uses this variable.
-                           // This variable does not give any functionality to
-                           // disable or enable ibl for material.
-    float iblIntensity = 0.25f;
-    uint irradianceMap = 0;
-    bool AOInUse       = true;
-    int priority       = 0; // The higher the priority, the earlier to draw.
+
+    /* ONLY Renderer class edits and uses this variable. This variable does not
+     * give any functionality to disable or enable ibl for material.*/
+    bool IBLInUse               = false;
+    float iblIntensity          = 0.25f;
+    uint irradianceMap          = 0;
+    bool AOInUse                = true;
+    int priority = 0; // The higher the priority, the earlier to draw.
+    bool useForwardPath =
+        false; // Force material to be drawn with forward pass.
+    bool isColorMaterial      = true;
+    bool emissiveTextureInUse = false;
+    uint emissiveTexture      = 0;
   };
 
 } // namespace ToolKit

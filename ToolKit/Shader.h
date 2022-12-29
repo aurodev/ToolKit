@@ -37,8 +37,16 @@ namespace ToolKit
     COLOR_ALPHA,
     USE_AO,
     IBL_ROTATION,
-    LIGHTING_ONLY
+    UNUSEDSLOT_2, //Lighting Only
+    USE_ALPHA_MASK,
+    ALPHA_MASK_TRESHOLD,
+    USE_FORWARD_PATH,
+    EMISSIVE_TEXTURE_IN_USE,
+    EMISSIVE_COLOR,
+    UNIFORM_MAX_INVALID
   };
+
+  const char* GetUniformName(Uniform u);
 
   class TK_API Shader : public Resource
   {
@@ -96,7 +104,7 @@ namespace ToolKit
     /**
      * Internal Id that is being used by graphics API.
      */
-    uint m_shaderHandle = 0;
+    uint m_shaderHandle     = 0;
 
     /**
      * Built-in Uniform's that is required for the shader.

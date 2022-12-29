@@ -13,11 +13,12 @@ namespace ToolKit
   {
     SetLens(glm::radians(90.0f), 640.0f / 480.0f, 0.01f, 1000.0f);
     AddComponent(new DirectionComponent(this));
+
+    ParameterConstructor();
+    ParameterEventConstructor();
   }
 
-  Camera::~Camera()
-  {
-  }
+  Camera::~Camera() {}
 
   void Camera::SetLens(float fov, float aspect)
   {
@@ -34,11 +35,15 @@ namespace ToolKit
     m_ortographic = false;
   }
 
-  void Camera::SetLens(
-      float left, float right, float bottom, float top, float near, float far)
+  void Camera::SetLens(float left,
+                       float right,
+                       float bottom,
+                       float top,
+                       float near,
+                       float far)
   {
-    m_aspect     = (right - left) / (top - bottom);
-    m_projection = glm::ortho(left * m_orthographicScale,
+    m_aspect      = (right - left) / (top - bottom);
+    m_projection  = glm::ortho(left * m_orthographicScale,
                               right * m_orthographicScale,
                               bottom * m_orthographicScale,
                               top * m_orthographicScale,
@@ -49,7 +54,6 @@ namespace ToolKit
     m_right       = right;
     m_top         = top;
     m_bottom      = bottom;
-    m_fov         = 0.0f;
     m_near        = near;
     m_far         = far;
     m_ortographic = true;
@@ -61,22 +65,16 @@ namespace ToolKit
     return glm::inverse(view);
   }
 
-  Mat4 Camera::GetProjectionMatrix() const
-  {
-    return m_projection;
-  }
+  Mat4 Camera::GetProjectionMatrix() const { return m_projection; }
 
-  bool Camera::IsOrtographic() const
-  {
-    return m_ortographic;
-  }
+  bool Camera::IsOrtographic() const { return m_ortographic; }
 
   Camera::CamData Camera::GetData() const
   {
     CamData data;
     DirectionComponentPtr dcp = GetComponent<DirectionComponent>();
     assert(dcp);
-    data.dir = dcp->GetDirection();
+    data.dir         = dcp->GetDirection();
 
     data.pos         = m_node->GetTranslation();
     data.projection  = m_projection;
@@ -89,15 +87,12 @@ namespace ToolKit
     return data;
   }
 
-  EntityType Camera::GetType() const
-  {
-    return EntityType::Entity_Camera;
-  }
+  EntityType Camera::GetType() const { return EntityType::Entity_Camera; }
 
   void Camera::Serialize(XmlDocument* doc, XmlNode* parent) const
   {
     Entity::Serialize(doc, parent);
-    parent = parent->last_node();
+    parent        = parent->last_node();
 
     XmlNode* node = CreateXmlNode(doc, "Camera", parent);
 
@@ -158,50 +153,23 @@ namespace ToolKit
     GetComponent<DirectionComponent>()->LookAt(geoCenter);
   }
 
-  float Camera::Fov() const
-  {
-    return m_fov;
-  }
+  float Camera::Fov() const { return m_fov; }
 
-  float Camera::Aspect() const
-  {
-    return m_aspect;
-  }
+  float Camera::Aspect() const { return m_aspect; }
 
-  float Camera::Near() const
-  {
-    return m_near;
-  }
+  float Camera::Near() const { return m_near; }
 
-  float Camera::Far() const
-  {
-    return m_far;
-  }
+  float Camera::Far() const { return m_far; }
 
-  float Camera::Left() const
-  {
-    return m_left;
-  }
+  float Camera::Left() const { return m_left; }
 
-  float Camera::Right() const
-  {
-    return m_right;
-  }
+  float Camera::Right() const { return m_right; }
 
-  float Camera::Top() const
-  {
-    return m_top;
-  }
+  float Camera::Top() const { return m_top; }
 
-  float Camera::Bottom() const
-  {
-    return m_bottom;
-  }
+  float Camera::Bottom() const { return m_bottom; }
 
-  Vec3 Camera::Position() const
-  {
-    return m_node->GetTranslation();
-  }
+  Vec3 Camera::Position() const { return m_node->GetTranslation(); }
 
   Vec3 Camera::Direction() const
   {
@@ -227,6 +195,98 @@ namespace ToolKit
     cpy->AddComponent(new DirectionComponent(cpy));
 
     return cpy;
+  }
+
+  void Camera::ParameterConstructor()
+  {
+    Fov_Define(glm::degrees(m_fov),
+               CameraCategory.Name,
+               CameraCategory.Priority,
+               true,
+               true,
+               {false, true, 10.0f, 175.0f, 5.0f});
+
+    NearClip_Define(m_near,
+                    CameraCategory.Name,
+                    CameraCategory.Priority,
+                    true,
+                    true,
+                    {false, true, 0.1f, 100.0f, 0.1f});
+
+    FarClip_Define(m_far,
+                   CameraCategory.Name,
+                   CameraCategory.Priority,
+                   true,
+                   true,
+                   {false, true, 100.1f, 5000.0f, 10.0f});
+
+    Orthographic_Define(m_ortographic,
+                        CameraCategory.Name,
+                        CameraCategory.Priority,
+                        true,
+                        true);
+
+    OrthographicScale_Define(m_orthographicScale,
+                             CameraCategory.Name,
+                             CameraCategory.Priority,
+                             true,
+                             true,
+                             {false, true, 0.001f, 100.0f, 0.001f});
+  }
+
+  void Camera::ParameterEventConstructor()
+  {
+    auto updateLensInternalFn = [this]()
+    {
+      if (m_ortographic)
+      {
+        SetLens(Left(), Right(), Top(), Bottom(), Near(), Far());
+      }
+      else
+      {
+        SetLens(Fov(), Aspect(), Near(), Far());
+      }
+    };
+
+    ParamFov().m_onValueChangedFn.push_back(
+        [this, updateLensInternalFn](Value& oldVal, Value& newVal) -> void
+        {
+          float degree = std::get<float>(newVal);
+          m_fov        = glm::radians(degree);
+          updateLensInternalFn();
+        });
+
+    ParamNearClip().m_onValueChangedFn.push_back(
+        [this, updateLensInternalFn](Value& oldVal, Value& newVal) -> void
+        {
+          m_near = std::get<float>(newVal);
+          updateLensInternalFn();
+        });
+
+    ParamFarClip().m_onValueChangedFn.push_back(
+        [this, updateLensInternalFn](Value& oldVal, Value& newVal) -> void
+        {
+          m_far = std::get<float>(newVal);
+          updateLensInternalFn();
+        });
+
+    ParamOrthographic().m_onValueChangedFn.push_back(
+        [this, updateLensInternalFn](Value& oldVal, Value& newVal) -> void
+        {
+          m_ortographic = std::get<bool>(newVal);
+          updateLensInternalFn();
+        });
+
+    ParamOrthographicScale().m_onValueChangedFn.push_back(
+        [this](Value& oldVal, Value& newVal) -> void
+        {
+          m_orthographicScale = std::get<float>(newVal);
+
+          if (m_ortographic)
+          {
+            SetLens(Left(), Right(), Top(), Bottom(), Near(), Far());
+          }
+        });
   }
 
 } // namespace ToolKit

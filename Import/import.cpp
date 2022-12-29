@@ -61,9 +61,7 @@ namespace ToolKit
   class BoneNode
   {
    public:
-    BoneNode()
-    {
-    }
+    BoneNode() {}
 
     BoneNode(aiNode* node, unsigned int index)
     {
@@ -77,6 +75,7 @@ namespace ToolKit
   };
 
   vector<string> g_usedFiles;
+
   bool IsUsed(string file)
   {
     return find(g_usedFiles.begin(), g_usedFiles.end(), file) ==
@@ -98,9 +97,8 @@ namespace ToolKit
     std::replace_if(
         str.begin(),
         str.end(),
-        [&forbiddenChars](char c) {
-          return std::string::npos != forbiddenChars.find(c);
-        },
+        [&forbiddenChars](char c)
+        { return std::string::npos != forbiddenChars.find(c); },
         ' ');
   }
 
@@ -112,7 +110,7 @@ namespace ToolKit
   void Decompose(string fullPath, string& path, string& name)
   {
     NormalizePath(fullPath);
-    path = "";
+    path     = "";
 
     size_t i = fullPath.find_last_of(GetPathSeparator());
     if (i != string::npos)
@@ -138,9 +136,16 @@ namespace ToolKit
     *s = Vec3(aiS.x, aiS.y, aiS.z);
   }
 
-  string GetEmbeddedTextureName(const aiTexture* texture)
+  string GetEmbeddedTextureName(const aiTexture* texture, int i)
   {
     string name = texture->mFilename.C_Str();
+    if (name.empty())
+    {
+      // Some glb files doesn't contain any file name for embedded textures.
+      // So we add one to help importer.
+      name = "@" + std::to_string(i);
+    }
+
     NormalizePath(name);
     name = name + "." + texture->achFormatHint;
 
@@ -167,6 +172,7 @@ namespace ToolKit
   }
 
   std::vector<MaterialPtr> tMaterials;
+
   template <typename T>
   void CreateFileAndSerializeObject(T* objectToSerialize,
                                     const String& filePath)
@@ -199,25 +205,13 @@ namespace ToolKit
     return diff < -eps || diff == 0.0f;
   }
 
-  bool IsEqual(float a, float b, float eps)
-  {
-    return abs(a - b) < eps;
-  }
+  bool IsEqual(float a, float b, float eps) { return abs(a - b) < eps; }
 
-  bool IsZero(float a, float eps)
-  {
-    return abs(a) < eps;
-  }
+  bool IsZero(float a, float eps) { return abs(a) < eps; }
 
-  int GetMax(int a, int b)
-  {
-    return a > b ? a : b;
-  }
+  int GetMax(int a, int b) { return a > b ? a : b; }
 
-  int GetMax(int a, int b, int c)
-  {
-    return GetMax(a, GetMax(b, c));
-  }
+  int GetMax(int a, int b, int c) { return GetMax(a, GetMax(b, c)); }
 
   uint FindPosition(float AnimationTime, const aiNodeAnim* pNodeAnim)
   {
@@ -507,7 +501,8 @@ namespace ToolKit
 
     auto textureFindAndCreateFunc =
         [filePath, pathOrg](aiTextureType textureAssimpType,
-                            aiMaterial* material) -> TexturePtr {
+                            aiMaterial* material) -> TexturePtr
+    {
       int texCount = material->GetTextureCount(textureAssimpType);
       TexturePtr tTexture;
       if (texCount > 0)
@@ -519,13 +514,13 @@ namespace ToolKit
         bool embedded = false;
         if (!tName.empty() && tName[0] == '*') // Embedded texture.
         {
-          embedded           = true;
-          string indxPart    = tName.substr(1);
-          unsigned int tIndx = atoi(indxPart.c_str());
+          embedded        = true;
+          string indxPart = tName.substr(1);
+          uint tIndx      = atoi(indxPart.c_str());
           if (g_scene->mNumTextures > tIndx)
           {
             aiTexture* t = g_scene->mTextures[tIndx];
-            tName        = GetEmbeddedTextureName(t);
+            tName        = GetEmbeddedTextureName(t, tIndx);
           }
         }
 
@@ -575,9 +570,20 @@ namespace ToolKit
       MaterialPtr tMaterial = std::make_shared<Material>();
 
       auto diffuse = textureFindAndCreateFunc(aiTextureType_DIFFUSE, material);
+      tMaterial->GetRenderState()->isColorMaterial = true;
       if (diffuse)
       {
-        tMaterial->m_diffuseTexture = diffuse;
+        tMaterial->m_diffuseTexture                  = diffuse;
+        tMaterial->GetRenderState()->isColorMaterial = false;
+      }
+
+      auto emissive =
+          textureFindAndCreateFunc(aiTextureType_EMISSIVE, material);
+      tMaterial->GetRenderState()->emissiveTextureInUse = false;
+      if (emissive)
+      {
+        tMaterial->m_emissiveTexture                      = emissive;
+        tMaterial->GetRenderState()->emissiveTextureInUse = true;
       }
 
       tMaterial->SetFile(writePath);
@@ -749,6 +755,7 @@ namespace ToolKit
   }
 
   EntityRawPtrArray deletedEntities;
+
   bool deleteEmptyEntitiesRecursively(Scene* tScene, Entity* ntt)
   {
     bool shouldDelete = true;
@@ -833,7 +840,7 @@ namespace ToolKit
     string path, name;
     Decompose(filePath, path, name);
 
-    string fullPath = path + name + ".scene";
+    string fullPath = path + name + SCENE;
     AddToUsedFiles(fullPath);
     Scene* tScene = new Scene;
 
@@ -856,7 +863,8 @@ namespace ToolKit
 
   void ImportSkeleton(string filePath)
   {
-    auto addBoneNodeFn = [](aiNode* node, aiBone* bone) -> void {
+    auto addBoneNodeFn = [](aiNode* node, aiBone* bone) -> void
+    {
       BoneNode bn(node, 0);
       if (node->mName == bone->mName)
       {
@@ -899,7 +907,8 @@ namespace ToolKit
 
         // Go Down
         std::function<void(aiNode*)> checkDownFn =
-            [&checkDownFn, &bone, &addBoneNodeFn](aiNode* node) -> void {
+            [&checkDownFn, &bone, &addBoneNodeFn](aiNode* node) -> void
+        {
           if (node == nullptr)
           {
             return;
@@ -924,9 +933,15 @@ namespace ToolKit
       }
     }
 
+    if (bones.size() == 0)
+    {
+      return;
+    }
+
     // Assign indices
     std::function<void(aiNode*, unsigned int&)> assignBoneIndexFn =
-        [&assignBoneIndexFn](aiNode* node, unsigned int& index) -> void {
+        [&assignBoneIndexFn](aiNode* node, unsigned int& index) -> void
+    {
       if (g_skeletonMap.find(node->mName.C_Str()) != g_skeletonMap.end())
       {
         g_skeletonMap[node->mName.C_Str()].boneIndex = index++;
@@ -945,27 +960,31 @@ namespace ToolKit
     Decompose(filePath, path, name);
     string fullPath = path + name + SKELETON;
 
-    g_skeleton = std::make_shared<Skeleton>();
+    g_skeleton      = std::make_shared<Skeleton>();
     g_skeleton->SetFile(fullPath);
 
     // Print
     std::function<void(aiNode * node, DynamicBoneMap::DynamicBone*)>
         setBoneHierarchyFn =
             [&setBoneHierarchyFn](
-                aiNode* node, DynamicBoneMap::DynamicBone* parentBone) -> void {
+                aiNode* node,
+                DynamicBoneMap::DynamicBone* parentBone) -> void
+    {
       DynamicBoneMap::DynamicBone* searchDBone = parentBone;
       if (g_skeletonMap.find(node->mName.C_Str()) != g_skeletonMap.end())
       {
         assert(node->mName.length);
-        g_skeleton->m_Tpose.boneList.insert(std::make_pair(
-            String(node->mName.C_Str()), DynamicBoneMap::DynamicBone()));
+        g_skeleton->m_Tpose.boneList.insert(
+            std::make_pair(String(node->mName.C_Str()),
+                           DynamicBoneMap::DynamicBone()));
         searchDBone =
             &g_skeleton->m_Tpose.boneList.find(node->mName.C_Str())->second;
         searchDBone->node                 = new Node();
         searchDBone->node->m_inheritScale = true;
         searchDBone->boneIndx             = uint(g_skeleton->m_bones.size());
-        g_skeleton->m_Tpose.AddDynamicBone(
-            node->mName.C_Str(), *searchDBone, parentBone);
+        g_skeleton->m_Tpose.AddDynamicBone(node->mName.C_Str(),
+                                           *searchDBone,
+                                           parentBone);
 
         StaticBone* sBone = new StaticBone(node->mName.C_Str());
         g_skeleton->m_bones.push_back(sBone);
@@ -977,7 +996,8 @@ namespace ToolKit
     };
 
     std::function<void(aiNode * node)> setTransformationsFn =
-        [&setTransformationsFn](aiNode* node) -> void {
+        [&setTransformationsFn](aiNode* node) -> void
+    {
       if (g_skeletonMap.find(node->mName.C_Str()) != g_skeletonMap.end())
       {
         StaticBone* sBone = g_skeleton->GetBone(node->mName.C_Str());
@@ -1036,7 +1056,7 @@ namespace ToolKit
       {
         TexturePtr tTexture = std::make_shared<Texture>();
         aiTexture* texture  = g_scene->mTextures[i];
-        string embId        = GetEmbeddedTextureName(texture);
+        string embId        = GetEmbeddedTextureName(texture, i);
 
         // Compressed.
         if (texture->mHeight == 0)
@@ -1198,7 +1218,4 @@ namespace ToolKit
   }
 } // namespace ToolKit
 
-int main(int argc, char* argv[])
-{
-  return ToolKit::ToolKitMain(argc, argv);
-}
+int main(int argc, char* argv[]) { return ToolKit::ToolKitMain(argc, argv); }

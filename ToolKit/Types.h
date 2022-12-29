@@ -60,6 +60,7 @@ namespace rapidxml
   template <class Ch>
   class file;
 } // namespace rapidxml
+
 /// @endcond
 
 namespace ToolKit
@@ -68,6 +69,7 @@ namespace ToolKit
   // Primitive types.
   typedef char byte;
   typedef unsigned char ubyte;
+  typedef std::vector<byte> ByteArray;
   typedef uint32_t uint;
   typedef uint8_t uint8;
   typedef uint64_t ULongID;
@@ -99,6 +101,8 @@ namespace ToolKit
   typedef std::vector<MaterialPtr> MaterialPtrArray;
   typedef std::shared_ptr<class CubeMap> CubeMapPtr;
   typedef std::shared_ptr<class Texture> TexturePtr;
+  typedef std::shared_ptr<class DataTexture> DataTexturePtr;
+  typedef std::shared_ptr<class LightDataTexture> LightDataTexturePtr;
   typedef std::shared_ptr<class Hdri> HdriPtr;
   typedef std::shared_ptr<class RenderTarget> RenderTargetPtr;
   typedef std::shared_ptr<class Framebuffer> FramebufferPtr;
@@ -170,8 +174,8 @@ namespace ToolKit
   static const Vec3 XY_AXIS = Vec3(1.0f, 1.0f, 0.0f);
   static const Vec3 YZ_AXIS = Vec3(0.0f, 1.0f, 1.0f);
   static const Vec3 ZX_AXIS = Vec3(1.0f, 0.0f, 1.0f);
-  static const Vec3 AXIS[6] = {
-      X_AXIS, Y_AXIS, Z_AXIS, XY_AXIS, YZ_AXIS, ZX_AXIS};
+  static const Vec3 AXIS[6] =
+      {X_AXIS, Y_AXIS, Z_AXIS, XY_AXIS, YZ_AXIS, ZX_AXIS};
   struct BoundingBox;
 
   // Supported file formats.
@@ -259,7 +263,7 @@ namespace ToolKit
 
   static const float TK_FLT_MAX = std::numeric_limits<float>::max();
   static const int TK_INT_MAX   = std::numeric_limits<int>::max();
-  static const int TK_UINT_MAX   = std::numeric_limits<unsigned int>::max();
+  static const int TK_UINT_MAX  = std::numeric_limits<unsigned int>::max();
 
   // Graphics Api Type Overrides.
   enum class GraphicTypes
@@ -281,8 +285,10 @@ namespace ToolKit
     FormatRGB            = 0x1907,
     FormatRGBA8          = 0x8058,
     FormatRGBA           = 0x1908,
+    FormatR16F           = 0x822A,
     FormatR32F           = 0x822E,
     FormatRG32F          = 0x8230,
+    FormatRGB16F         = 0x881B,
     FormatRGBA16F        = 0x881A,
     FormatDepthComponent = 0x1902,
     ColorAttachment0     = 0x8CE0,
@@ -291,7 +297,15 @@ namespace ToolKit
     TypeUnsignedByte     = 0x1401,
     Target2D             = 0x0DE1,
     TargetCubeMap        = 0x8513,
-    Target2DArray        = 0x8C1A
+    Target2DArray        = 0x8C1A,
+    FuncNever            = 0x0200,
+    FuncLess             = 0x0201,
+    FuncEqual            = 0x0202,
+    FuncLequal           = 0x0203,
+    FuncGreater          = 0x0204,
+    FuncNEqual           = 0x0205,
+    FuncGEqual           = 0x0206,
+    FuncAlways           = 0x0207
   };
 
   enum class GraphicBitFields
@@ -305,6 +319,6 @@ namespace ToolKit
     AllBits          = ColorBits | DepthBits | StencilBits
   };
 
-  static const char* TKVersionStr = "v0.3.18";
+  static const char* TKVersionStr = "v0.3.19";
 
 } // namespace ToolKit

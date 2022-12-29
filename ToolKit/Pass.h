@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BinPack2D.h"
+#include "DataTexture.h"
 #include "Framebuffer.h"
 #include "GeometryTypes.h"
 #include "Primative.h"
@@ -25,32 +27,20 @@ namespace ToolKit
     FramebufferPtr m_prevFrameBuffer   = nullptr;
   };
 
-  struct RenderPassParams
-  {
-    ScenePtr Scene;
-    LightRawPtrArray LightOverride;
-    Camera* Cam                = nullptr;
-    FramebufferPtr FrameBuffer = nullptr;
-    bool ClearFrameBuffer      = true;
-  };
-
-  /**
-   * Renders the given scene with full forward render pipeline.
+  /*
+   * Base class for main rendering classes.
    */
   class TK_API RenderPass : public Pass
   {
    public:
-    RenderPass();
-    explicit RenderPass(const RenderPassParams& params);
-    virtual ~RenderPass();
+    // Sort entities  by distance (from boundary center)
+    // in ascending order to camera. Accounts for isometric camera.
+    void StableSortByDistanceToCamera(EntityRawPtrArray& entities,
+                                      const Camera* cam);
 
-    void Render() override;
-    void PreRender() override;
-    void PostRender() override;
-
-   protected:
-    void CullDrawList(EntityRawPtrArray& entities, Camera* camera);
-    void CullLightList(Entity const* entity, LightRawPtrArray& lights);
+    // Sort entities by their material's render state's priority in
+    // descending order.
+    void StableSortByMaterialPriority(EntityRawPtrArray& entities);
 
     /**
      * Extracts translucent entities from given entity array.
@@ -59,6 +49,43 @@ namespace ToolKit
      */
     void SeperateTranslucentEntities(EntityRawPtrArray& entities,
                                      EntityRawPtrArray& translucentEntities);
+
+    /**
+     * Extracts translucent and unlit entities from given entity array.
+     * @param entities Entity array that the translucent will extracted from.
+     * @param translucentAndUnlit Entity array that contains translucent and
+     * unlit entities.
+     */
+    void SeperateTranslucentAndUnlitEntities(
+        EntityRawPtrArray& entities,
+        EntityRawPtrArray& translucentAndUnlitEntities);
+  };
+
+  struct ForwardRenderPassParams
+  {
+    EntityRawPtrArray Entities;
+    LightRawPtrArray Lights;
+    Camera* Cam                = nullptr;
+    FramebufferPtr FrameBuffer = nullptr;
+    bool ClearFrameBuffer      = true;
+  };
+
+  /**
+   * Renders given entities with given lights using forward rendering
+   */
+  class TK_API ForwardRenderPass : public RenderPass
+  {
+   public:
+    ForwardRenderPass();
+    explicit ForwardRenderPass(const ForwardRenderPassParams& params);
+    virtual ~ForwardRenderPass();
+
+    void Render() override;
+    void PreRender() override;
+    void PostRender() override;
+
+   protected:
+    void CullLightList(const Entity* entity, LightRawPtrArray& lights);
 
     /**
      * Renders the entities immediately. No sorting applied.
@@ -83,15 +110,14 @@ namespace ToolKit
                            const LightRawPtrArray& lights);
 
    public:
-    RenderPassParams m_params;
+    ForwardRenderPassParams m_params;
 
    protected:
     Camera* m_camera = nullptr;
     EntityRawPtrArray m_drawList;
-    LightRawPtrArray m_contributingLights;
   };
 
-  typedef std::shared_ptr<RenderPass> RenderPassPtr;
+  typedef std::shared_ptr<ForwardRenderPass> ForwardRenderPassPtr;
 
   struct ShadowPassParams
   {
@@ -117,10 +143,9 @@ namespace ToolKit
 
    private:
     void RenderShadowMaps(Light* light, const EntityRawPtrArray& entities);
-    void FilterShadowMap(Light* light);
 
     /**
-     * Sets layer and coordintes of the shadow maps in shadow atlas.
+     * Sets layer and coordinates of the shadow maps in shadow atlas.
      * @param lights Light array that have shadows.
      * @return number of layers needed.
      */
@@ -138,6 +163,7 @@ namespace ToolKit
     MaterialPtr m_prevOverrideMaterial = nullptr;
     FramebufferPtr m_prevFrameBuffer   = nullptr;
     MaterialPtr m_lastOverrideMat      = nullptr;
+    const Vec4 m_shadowClearColor      = Vec4(1.0f);
 
     FramebufferPtr m_shadowFramebuffer = nullptr;
     RenderTargetPtr m_shadowAtlas      = nullptr;
@@ -148,6 +174,8 @@ namespace ToolKit
     EntityRawPtrArray m_drawList;
     Quaternion m_cubeMapRotations[6];
     Vec3 m_cubeMapScales[6];
+
+    BinPack2D m_packer;
   };
 
   typedef std::shared_ptr<ShadowPass> ShadowPassPtr;
@@ -155,8 +183,10 @@ namespace ToolKit
   struct FullQuadPassParams
   {
     FramebufferPtr FrameBuffer = nullptr;
+    BlendFunction BlendFunc    = BlendFunction::NONE;
     ShaderPtr FragmentShader   = nullptr;
     bool ClearFrameBuffer      = true;
+    LightRawPtrArray lights;
   };
 
   /**
@@ -184,6 +214,34 @@ namespace ToolKit
   };
 
   typedef std::shared_ptr<FullQuadPass> FullQuadPassPtr;
+
+  struct CubeMapPassParams
+  {
+    FramebufferPtr FrameBuffer = nullptr;
+    Camera* Cam                = nullptr;
+    MaterialPtr Material       = nullptr;
+    Mat4 Transform;
+  };
+
+  class TK_API CubeMapPass : public Pass
+  {
+   public:
+    CubeMapPass();
+    explicit CubeMapPass(const CubeMapPassParams& params);
+    ~CubeMapPass();
+
+    void Render() override;
+    void PreRender() override;
+    void PostRender() override;
+
+   public:
+    CubeMapPassParams m_params;
+
+   private:
+    CubePtr m_cube = nullptr;
+  };
+
+  typedef std::shared_ptr<CubeMapPass> CubeMapPassPtr;
 
   struct StencilRenderPassParams
   {
@@ -251,43 +309,130 @@ namespace ToolKit
 
   typedef std::shared_ptr<OutlinePass> OutlinePassPtr;
 
-  struct GammaPassParams
+  struct GBufferPassParams
   {
-    FramebufferPtr FrameBuffer = nullptr;
-    float Gamma                = 2.2f;
+    EntityRawPtrArray entities;
+    Camera* camera;
   };
 
-  /**
-   * Apply gamma correction to given frame buffer.
-   */
-  class TK_API GammaPass : public Pass
+  class TK_API GBufferPass : public Pass
   {
    public:
-    GammaPass();
-    explicit GammaPass(const GammaPassParams& params);
+    GBufferPass();
 
-    void Render() override;
     void PreRender() override;
     void PostRender() override;
+    void Render() override;
+    void InitGBuffers(int width, int height);
+    void UnInitGBuffers();
 
    public:
-    GammaPassParams m_params;
+    FramebufferPtr m_framebuffer     = nullptr;
+    RenderTargetPtr m_gPosRt         = nullptr;
+    RenderTargetPtr m_gNormalRt      = nullptr;
+    RenderTargetPtr m_gColorRt       = nullptr;
+    RenderTargetPtr m_gEmissiveRt    = nullptr;
+    RenderTargetPtr m_gLinearDepthRt = nullptr;
+
+    int m_width                      = 1024;
+    int m_height                     = 1024;
+
+    GBufferPassParams m_params;
 
    private:
-    FullQuadPassPtr m_gammaPass   = nullptr;
-    FramebufferPtr m_copyBuffer   = nullptr;
-    RenderTargetPtr m_copyTexture = nullptr;
-    ShaderPtr m_gammaShader       = nullptr;
+    bool m_initialized            = false;
+    bool m_attachmentsSet         = false;
+    MaterialPtr m_gBufferMaterial = nullptr;
   };
+
+  typedef std::shared_ptr<GBufferPass> GBufferPassPtr;
+
+  struct DeferredRenderPassParams
+  {
+    LightRawPtrArray lights;
+    FramebufferPtr MainFramebuffer    = nullptr;
+    FramebufferPtr GBufferFramebuffer = nullptr;
+    bool ClearFramebuffer             = true;
+    Camera* Cam                       = nullptr;
+    TexturePtr AOTexture              = nullptr;
+  };
+
+  class TK_API DeferredRenderPass : public RenderPass
+  {
+   public:
+    DeferredRenderPass();
+    DeferredRenderPass(const DeferredRenderPassParams& params);
+
+    void PreRender() override;
+    void PostRender() override;
+    void Render() override;
+
+   private:
+    void InitLightDataTexture();
+
+   public:
+    DeferredRenderPassParams m_params;
+
+   private:
+    FullQuadPass m_fullQuadPass;
+    ShaderPtr m_deferredRenderShader       = nullptr;
+
+    const IVec2 m_lightDataTextureSize     = IVec2(1024);
+    LightDataTexturePtr m_lightDataTexture = nullptr;
+  };
+
+  typedef std::shared_ptr<DeferredRenderPass> DeferredRenderPassPtr;
 
   struct SceneRenderPassParams
   {
-    RenderPassParams renderPassParams;
-    ShadowPassParams shadowPassParams;
+    ScenePtr Scene = nullptr;
+    LightRawPtrArray Lights;
+    Camera* Cam                    = nullptr;
+    FramebufferPtr MainFramebuffer = nullptr;
+    bool ClearFramebuffer          = true;
   };
 
+  struct SSAOPassParams
+  {
+    TexturePtr GPositionBuffer    = nullptr;
+    TexturePtr GNormalBuffer      = nullptr;
+    TexturePtr GLinearDepthBuffer = nullptr;
+    Camera* Cam                   = nullptr;
+  };
+
+  class TK_API SSAOPass : public Pass
+  {
+   public:
+    SSAOPass();
+    explicit SSAOPass(const SSAOPassParams& params);
+
+    void Render();
+    void PreRender();
+    void PostRender();
+
+   private:
+    void GenerateSSAONoise();
+
+   public:
+    SSAOPassParams m_params;
+    RenderTargetPtr m_ssaoTexture = nullptr;
+
+   private:
+    Vec3Array m_ssaoKernel;
+    Vec2Array m_ssaoNoise;
+
+    FramebufferPtr m_ssaoFramebuffer   = nullptr;
+    SSAONoiseTexturePtr m_noiseTexture = nullptr;
+    RenderTargetPtr m_tempBlurRt       = nullptr;
+
+    FullQuadPass m_quadPass;
+    ShaderPtr m_ssaoShader = nullptr;
+  };
+
+  typedef std::shared_ptr<SSAOPass> SSAOPassPtr;
+
   /**
-   * Render scene with shadows.
+   * Main scene renderer.
    * TODO: It should be Tecnhique instead of Pass.
    */
   class TK_API SceneRenderPass : public Pass
@@ -300,11 +445,24 @@ namespace ToolKit
     void PreRender() override;
     void PostRender() override;
 
+   private:
+    void SetPassParams();
+    void CullDrawList(EntityRawPtrArray& entities, Camera* camera);
+
    public:
     SceneRenderPassParams m_params;
 
-    ShadowPassPtr m_shadowPass = nullptr;
-    RenderPassPtr m_renderPass = nullptr;
+    ShadowPassPtr m_shadowPass               = nullptr;
+    ForwardRenderPassPtr m_forwardRenderPass = nullptr;
+    CubeMapPassPtr m_skyPass                 = nullptr;
+    GBufferPass m_gBufferPass;
+    DeferredRenderPass m_deferredRenderPass;
+    SSAOPass m_ssaoPass;
+
+   private:
+    bool m_drawSky = false;
   };
+
+  typedef std::shared_ptr<SceneRenderPass> SceneRenderPassPtr;
 
 } // namespace ToolKit

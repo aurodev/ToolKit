@@ -25,9 +25,7 @@ namespace ToolKit
       DeSerialize(nullptr, node);
     }
 
-    PluginWindow::~PluginWindow()
-    {
-    }
+    PluginWindow::~PluginWindow() {}
 
     void PluginWindow::Show()
     {
@@ -50,10 +48,7 @@ namespace ToolKit
       ImGui::End();
     }
 
-    Window::Type PluginWindow::GetType() const
-    {
-      return Type::PluginWindow;
-    }
+    Window::Type PluginWindow::GetType() const { return Type::PluginWindow; }
 
     void PluginWindow::Serialize(XmlDocument* doc, XmlNode* parent) const
     {
@@ -104,16 +99,16 @@ namespace ToolKit
 
     void PluginWindow::ShowActionButtons()
     {
-      Vec2 min  = ImGui::GetWindowContentRegionMin();
-      Vec2 max  = ImGui::GetWindowContentRegionMax();
-      Vec2 size = max - min;
+      Vec2 min       = ImGui::GetWindowContentRegionMin();
+      Vec2 max       = ImGui::GetWindowContentRegionMax();
+      Vec2 size      = max - min;
 
       // Draw play - pause - stop buttons.
       float btnWidth = 24.0f;
       float offset   = (size.x - btnWidth * 5.0f) * 0.5f;
 
-      ImGui::SameLine(offset);
       float curYoff = ImGui::GetCursorPosY() + 10.0f;
+      ImGui::SameLine(offset);
       ImGui::SetCursorPosY(curYoff);
 
       if (g_app->m_gameMod == GameMod::Playing)
@@ -154,14 +149,15 @@ namespace ToolKit
         ImGui::PopStyleColor(3);
       }
 
-      ImGui::SameLine();
-
       // Red tint.
       ImGui::PushStyleColor(ImGuiCol_Button, g_redTintButtonColor);
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, g_redTintButtonHoverColor);
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, g_redTintButtonActiveColor);
 
       // Stop.
+      ImGui::SameLine();
+      ImGui::SetCursorPosY(curYoff);
+
       if (ImGui::ImageButton(Convert2ImGuiTexture(UI::m_stopIcon),
                              ImVec2(btnWidth, btnWidth)))
       {
@@ -174,6 +170,7 @@ namespace ToolKit
 
       ImGui::PopStyleColor(3);
       ImGui::SameLine();
+      ImGui::SetCursorPosY(curYoff);
 
       // VS Code.
       if (ImGui::ImageButton(Convert2ImGuiTexture(UI::m_vsCodeIcon),
@@ -200,11 +197,14 @@ namespace ToolKit
 
       // Build.
       ImGui::SameLine();
+      ImGui::SetCursorPosY(curYoff);
+
       if (ImGui::ImageButton(Convert2ImGuiTexture(UI::m_buildIcn),
                              ImVec2(btnWidth, btnWidth)))
       {
         g_app->CompilePlugin();
       }
+
       UI::HelpMarker(TKLoc, "Build\nBuilds the projects code files.");
     }
 
@@ -228,7 +228,7 @@ namespace ToolKit
         // Resolution Bar
         EmulatorResolution resolution = m_settings->Resolution;
 
-        int resolutionType = static_cast<int>(resolution);
+        int resolutionType            = static_cast<int>(resolution);
 
         ImGui::Text("Resolution");
         ImGui::TableSetColumnIndex(1);
@@ -324,8 +324,12 @@ namespace ToolKit
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(150.0f);
 
-        if (ImGui::DragFloat(
-                "##w", &m_settings->Width, 1.0f, 1.0f, 4096.0f, "%.0f"))
+        if (ImGui::DragFloat("##w",
+                             &m_settings->Width,
+                             1.0f,
+                             1.0f,
+                             4096.0f,
+                             "%.0f"))
         {
           UpdateSimulationWndSize();
         }
@@ -336,8 +340,12 @@ namespace ToolKit
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(150.0f);
 
-        if (ImGui::DragFloat(
-                "##h", &m_settings->Height, 1.0f, 1.0f, 4096.0f, "%.0f"))
+        if (ImGui::DragFloat("##h",
+                             &m_settings->Height,
+                             1.0f,
+                             1.0f,
+                             4096.0f,
+                             "%.0f"))
         {
           UpdateSimulationWndSize();
         }

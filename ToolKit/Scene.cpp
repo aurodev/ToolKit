@@ -16,20 +16,11 @@
 namespace ToolKit
 {
 
-  Scene::Scene()
-  {
-    m_name = "New Scene";
-  }
+  Scene::Scene() { m_name = "New Scene"; }
 
-  Scene::Scene(String file) : Scene()
-  {
-    SetFile(file);
-  }
+  Scene::Scene(String file) : Scene() { SetFile(file); }
 
-  Scene::~Scene()
-  {
-    Destroy(false);
-  }
+  Scene::~Scene() { Destroy(false); }
 
   void Scene::Load()
   {
@@ -45,6 +36,7 @@ namespace ToolKit
     sceneDoc.parse<0>(sceneFile->data());
 
     DeSerialize(&sceneDoc, nullptr);
+    PostDeSerialize();
 
     // Update parent - child relation for entities.
     for (Entity* e : m_entities)
@@ -123,14 +115,9 @@ namespace ToolKit
     m_initiated = true;
   }
 
-  void Scene::UnInit()
-  {
-    Destroy(false);
-  }
+  void Scene::UnInit() { Destroy(false); }
 
-  void Scene::Update(float deltaTime)
-  {
-  }
+  void Scene::Update(float deltaTime) {}
 
   void Scene::Merge(ScenePtr other)
   {
@@ -151,12 +138,13 @@ namespace ToolKit
                                     const EntityRawPtrArray& extraList)
   {
     PickData pd;
-    pd.pickPos = ray.position + ray.direction * 5.0f;
+    pd.pickPos                  = ray.position + ray.direction * 5.0f;
 
     float closestPickedDistance = FLT_MAX;
 
     auto pickFn = [&ignoreList, &ray, &pd, &closestPickedDistance](
-                      const EntityRawPtrArray& entities) -> void {
+                      const EntityRawPtrArray& entities) -> void
+    {
       for (Entity* ntt : entities)
       {
         if (!ntt->IsDrawable())
@@ -176,7 +164,7 @@ namespace ToolKit
         rayInObjectSpace.position  = its * Vec4(ray.position, 1.0f);
         rayInObjectSpace.direction = its * Vec4(ray.direction, 0.0f);
 
-        float dist = 0;
+        float dist                 = 0;
         if (RayBoxIntersection(rayInObjectSpace, ntt->GetAABB(), dist))
         {
           bool hit = true;
@@ -203,8 +191,10 @@ namespace ToolKit
               {
                 skelComp = ntt->GetComponent<SkeletonComponent>().get();
               }
-              hit = RayMeshIntersection(
-                  mesh, rayInObjectSpace, meshDist, skelComp);
+              hit = RayMeshIntersection(mesh,
+                                        rayInObjectSpace,
+                                        meshDist,
+                                        skelComp);
               if (hit)
               {
                 dist = meshDist;
@@ -238,7 +228,8 @@ namespace ToolKit
                          bool pickPartiallyInside)
   {
     auto pickFn = [&frustum, &pickedObjects, &ignoreList, &pickPartiallyInside](
-                      const EntityRawPtrArray& entities) -> void {
+                      const EntityRawPtrArray& entities) -> void
+    {
       for (Entity* e : entities)
       {
         if (!e->IsDrawable())
@@ -296,10 +287,7 @@ namespace ToolKit
     m_entities.push_back(entity);
   }
 
-  EntityRawPtrArray& Scene::AccessEntityArray()
-  {
-    return m_entities;
-  }
+  EntityRawPtrArray& Scene::AccessEntityArray() { return m_entities; }
 
   Entity* Scene::RemoveEntity(ULongID id)
   {
@@ -325,15 +313,9 @@ namespace ToolKit
     }
   }
 
-  void Scene::RemoveAllEntities()
-  {
-    m_entities.clear();
-  }
+  void Scene::RemoveAllEntities() { m_entities.clear(); }
 
-  const EntityRawPtrArray& Scene::GetEntities() const
-  {
-    return m_entities;
-  }
+  const EntityRawPtrArray& Scene::GetEntities() const { return m_entities; }
 
   const LightRawPtrArray Scene::GetLights() const
   {
@@ -427,7 +409,8 @@ namespace ToolKit
       if (folder != PrefabPath(""))
       {
         GetLogger()->WriteConsole(
-            LogType::Error, "You can't use a prefab outside of Prefab folder!");
+            LogType::Error,
+            "You can't use a prefab outside of Prefab folder!");
         return;
       }
       String folderName =
@@ -451,14 +434,20 @@ namespace ToolKit
         continue;
       }
 
-      EnvironmentComponentPtr envCom =
-          ntt->GetComponent<EnvironmentComponent>();
-      if (envCom != nullptr && envCom->GetHdriVal() != nullptr &&
-          envCom->GetHdriVal()->IsTextureAssigned() &&
-          envCom->GetIlluminateVal())
+      if (EnvironmentComponentPtr envCom =
+              ntt->GetComponent<EnvironmentComponent>())
       {
-        envCom->Init(true);
-        envLightNtties.push_back(ntt);
+        if (envCom->GetIlluminateVal())
+        {
+          if (HdriPtr hdr = envCom->GetHdriVal())
+          {
+            if (hdr->IsTextureAssigned())
+            {
+              envCom->Init(true);
+              envLightNtties.push_back(ntt);
+            }
+          }
+        }
       }
     }
 
@@ -467,14 +456,25 @@ namespace ToolKit
 
   void Scene::Destroy(bool removeResources)
   {
+    std::vector<Entity*> prefabRoots;
+    for (Entity* ntt : m_entities)
+    {
+      if (Prefab::GetPrefabRoot(ntt))
+      {
+        if (ntt->GetType() == EntityType::Entity_Prefab)
+        {
+          prefabRoots.push_back(ntt);
+        }
+      }
+    }
+    for (Entity*& prefab : prefabRoots)
+    {
+      RemoveEntity({prefab});
+      SafeDel(prefab);
+    }
     for (uint nttIndx = 0; nttIndx < m_entities.size(); nttIndx++)
     {
       Entity* ntt = m_entities[nttIndx];
-      if (Prefab::GetPrefabRoot(ntt) &&
-          ntt->GetType() != EntityType::Entity_Prefab)
-      {
-        continue;
-      }
       if (removeResources)
       {
         ntt->RemoveResources();
@@ -510,10 +510,7 @@ namespace ToolKit
     entity->m_node = prevNode;
   }
 
-  void Scene::ClearEntities()
-  {
-    m_entities.clear();
-  }
+  void Scene::ClearEntities() { m_entities.clear(); }
 
   void Scene::CopyTo(Resource* other)
   {
@@ -553,8 +550,9 @@ namespace ToolKit
       }
       ntt->Serialize(doc, scene);
 
-      NormalizeEntityID(
-          doc, scene->last_node(XmlEntityElement.c_str()), listIndx);
+      NormalizeEntityID(doc,
+                        scene->last_node(XmlEntityElement.c_str()),
+                        listIndx);
     }
   }
 
@@ -619,6 +617,8 @@ namespace ToolKit
       Entity* ntt            = GetEntityFactory()->CreateByType(t);
 
       ntt->DeSerialize(doc, node);
+      ntt->PostDeSerialize();
+
       if (ntt->GetType() == EntityType::Entity_Prefab)
       {
         static_cast<Prefab*>(ntt)->Init(this);
@@ -649,14 +649,9 @@ namespace ToolKit
     return lastId;
   }
 
-  SceneManager::SceneManager()
-  {
-    m_type = ResourceType::Scene;
-  }
+  SceneManager::SceneManager() { m_type = ResourceType::Scene; }
 
-  SceneManager::~SceneManager()
-  {
-  }
+  SceneManager::~SceneManager() {}
 
   void SceneManager::Init()
   {
@@ -685,10 +680,7 @@ namespace ToolKit
     return ScenePath("Sample.scene", true);
   }
 
-  ScenePtr SceneManager::GetCurrentScene()
-  {
-    return m_currentScene;
-  }
+  ScenePtr SceneManager::GetCurrentScene() { return m_currentScene; }
 
   void SceneManager::SetCurrentScene(const ScenePtr& scene)
   {

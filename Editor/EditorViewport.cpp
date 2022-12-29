@@ -13,6 +13,7 @@
 #include "Node.h"
 #include "OverlayUI.h"
 #include "PopupWindows.h"
+#include "Prefab.h"
 #include "Primative.h"
 #include "Renderer.h"
 #include "SDL.h"
@@ -27,8 +28,10 @@ namespace ToolKit
   namespace Editor
   {
 
-    std::vector<OverlayUI*> EditorViewport::m_overlays = {
-        nullptr, nullptr, nullptr, nullptr};
+    std::vector<OverlayUI*> EditorViewport::m_overlays = {nullptr,
+                                                          nullptr,
+                                                          nullptr,
+                                                          nullptr};
 
     void InitOverlays(EditorViewport* viewport)
     {
@@ -76,12 +79,9 @@ namespace ToolKit
       m_name = g_viewportStr + " " + std::to_string(m_id);
       InitOverlays(this);
       m_snapDeltas = Vec3(0.25f, 45.0f, 0.25f);
-      ResetSelectedRenderTarget(GetRenderTargetSettings());
     }
 
-    EditorViewport::~EditorViewport()
-    {
-    }
+    EditorViewport::~EditorViewport() {}
 
     void EditorViewport::Show()
     {
@@ -118,14 +118,11 @@ namespace ToolKit
       }
 
       // Update viewport mods.
-      FpsNavigationMode(deltaTime);
+      FpsNavigationMod(deltaTime);
       OrbitPanMod(deltaTime);
     }
 
-    Window::Type EditorViewport::GetType() const
-    {
-      return Type::Viewport;
-    }
+    Window::Type EditorViewport::GetType() const { return Type::Viewport; }
 
     bool EditorViewport::IsViewportQueriable() const
     {
@@ -176,8 +173,10 @@ namespace ToolKit
                 "alignment",
                 std::to_string(static_cast<int>(m_cameraAlignment)));
 
-      WriteAttr(
-          node, doc, "lock", std::to_string(static_cast<int>(m_orbitLock)));
+      WriteAttr(node,
+                doc,
+                "lock",
+                std::to_string(static_cast<int>(m_orbitLock)));
       GetCamera()->Serialize(doc, node);
 
       XmlNode* wnd = parent->last_node();
@@ -191,8 +190,9 @@ namespace ToolKit
 
       if (XmlNode* node = parent->first_node("Viewport"))
       {
-        ReadAttr(
-            node, "alignment", *(reinterpret_cast<int*>(&m_cameraAlignment)));
+        ReadAttr(node,
+                 "alignment",
+                 *(reinterpret_cast<int*>(&m_cameraAlignment)));
         ReadAttr(node, "lock", m_orbitLock);
         Camera* viewCam = new Camera();
         viewCam->DeSerialize(nullptr, node->first_node("E"));
@@ -203,9 +203,6 @@ namespace ToolKit
     void EditorViewport::OnResizeContentArea(float width, float height)
     {
       Viewport::OnResizeContentArea(width, height);
-
-      ResetSelectedRenderTarget(GetRenderTargetSettings());
-
       AdjustZoom(0.0f);
     }
 
@@ -229,30 +226,6 @@ namespace ToolKit
       AdjustZoom(0.0f);
     }
 
-    void EditorViewport::ResetSelectedRenderTarget(
-        const RenderTargetSettigs& settings)
-    {
-      RenderTargetSettigs selectedSettings;
-      selectedSettings.WarpS = selectedSettings.WarpT =
-          GraphicTypes::UVClampToEdge;
-
-      m_selectedFramebuffer = std::make_shared<Framebuffer>();
-      m_selectedFramebuffer->Init({(uint) m_wndContentAreaSize.x,
-                                   (uint) m_wndContentAreaSize.y,
-                                   selectedSettings.Msaa,
-                                   true,
-                                   true});
-
-      m_selectedStencilRT =
-          std::make_shared<RenderTarget>((uint) m_wndContentAreaSize.x,
-                                         (uint) m_wndContentAreaSize.y,
-                                         selectedSettings);
-
-      m_selectedStencilRT->Init();
-      m_selectedFramebuffer->SetAttachment(
-          Framebuffer::Attachment::ColorAttachment0, m_selectedStencilRT);
-    }
-
     RenderTargetSettigs EditorViewport::GetRenderTargetSettings()
     {
       RenderTargetSettigs sets = Viewport::GetRenderTargetSettings();
@@ -264,23 +237,24 @@ namespace ToolKit
     {
       // Content area size
 
-      m_contentAreaMin = ImGui::GetWindowContentRegionMin();
-      m_contentAreaMax = ImGui::GetWindowContentRegionMax();
+      m_contentAreaMin               = ImGui::GetWindowContentRegionMin();
+      m_contentAreaMax               = ImGui::GetWindowContentRegionMax();
 
-      m_contentAreaMin.x += ImGui::GetWindowPos().x;
-      m_contentAreaMin.y += ImGui::GetWindowPos().y;
-      m_contentAreaMax.x += ImGui::GetWindowPos().x;
-      m_contentAreaMax.y += ImGui::GetWindowPos().y;
+      m_contentAreaMin.x             += ImGui::GetWindowPos().x;
+      m_contentAreaMin.y             += ImGui::GetWindowPos().y;
+      m_contentAreaMax.x             += ImGui::GetWindowPos().x;
+      m_contentAreaMax.y             += ImGui::GetWindowPos().y;
 
-      m_contentAreaLocation.x = m_contentAreaMin.x;
-      m_contentAreaLocation.y = m_contentAreaMin.y;
+      m_contentAreaLocation.x        = m_contentAreaMin.x;
+      m_contentAreaLocation.y        = m_contentAreaMin.y;
 
       const Vec2 lastContentAreaSize = m_wndContentAreaSize;
       m_wndContentAreaSize =
           Vec2(glm::abs(m_contentAreaMax.x - m_contentAreaMin.x),
                glm::abs(m_contentAreaMax.y - m_contentAreaMin.y));
-      if (glm::all(glm::epsilonNotEqual(
-              lastContentAreaSize, m_wndContentAreaSize, 0.001f)))
+      if (glm::all(glm::epsilonNotEqual(lastContentAreaSize,
+                                        m_wndContentAreaSize,
+                                        0.001f)))
       {
         m_needsResize = true;
       }
@@ -329,9 +303,8 @@ namespace ToolKit
 
           ImDrawList* drawList = ImGui::GetWindowDrawList();
           drawList->AddCallback(
-              [](const ImDrawList* parentList, const ImDrawCmd* cmd) {
-                GetRenderer()->EnableBlending(false);
-              },
+              [](const ImDrawList* parentList, const ImDrawCmd* cmd)
+              { GetRenderer()->EnableBlending(false); },
               nullptr);
 
           ImGui::Image(ConvertUIntImGuiTexture(texId),
@@ -340,15 +313,15 @@ namespace ToolKit
                        Vec2(1.0f, -1.0f));
 
           drawList->AddCallback(
-              [](const ImDrawList* parentList, const ImDrawCmd* cmd) {
-                GetRenderer()->EnableBlending(true);
-              },
+              [](const ImDrawList* parentList, const ImDrawCmd* cmd)
+              { GetRenderer()->EnableBlending(true); },
               nullptr);
 
           if (IsActive())
           {
-            ImGui::GetWindowDrawList()->AddRect(
-                m_contentAreaMin, m_contentAreaMax, IM_COL32(255, 255, 0, 255));
+            ImGui::GetWindowDrawList()->AddRect(m_contentAreaMin,
+                                                m_contentAreaMax,
+                                                IM_COL32(255, 255, 0, 255));
           }
           else
           {
@@ -373,10 +346,16 @@ namespace ToolKit
       m_drawCommands.clear();
     }
 
-    void EditorViewport::FpsNavigationMode(float deltaTime)
+    void EditorViewport::FpsNavigationMod(float deltaTime)
     {
       Camera* cam = GetCamera();
-      if (cam && !cam->IsOrtographic())
+      if (cam == nullptr)
+      {
+        return;
+      }
+
+      // Allow user camera to fps navigate even in orthographic mod.
+      if (m_attachedCamera != NULL_HANDLE || !cam->IsOrtographic())
       {
         // Mouse is right clicked
         if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
@@ -411,9 +390,9 @@ namespace ToolKit
               -glm::radians(delta.x * g_app->m_mouseSensitivity));
 
           Vec3 dir, up, right;
-          dir   = -Z_AXIS;
-          up    = Y_AXIS;
-          right = X_AXIS;
+          dir         = -Z_AXIS;
+          up          = Y_AXIS;
+          right       = X_AXIS;
 
           float speed = g_app->m_camSpeed;
 
@@ -577,8 +556,9 @@ namespace ToolKit
             Mat4 its = glm::translate(Mat4(), -orbitPnt);
             Quaternion qx =
                 glm::angleAxis(-glm::radians(y * g_app->m_mouseSensitivity), r);
-            Quaternion qy = glm::angleAxis(
-                -glm::radians(x * g_app->m_mouseSensitivity), Y_AXIS);
+            Quaternion qy =
+                glm::angleAxis(-glm::radians(x * g_app->m_mouseSensitivity),
+                               Y_AXIS);
 
             camTs = ts * glm::toMat4(qy * qx) * its * camTs;
             cam->m_node->SetTransform(camTs, TransformationSpace::TS_WORLD);
@@ -606,17 +586,21 @@ namespace ToolKit
 
       if (cam->IsOrtographic())
       {
-        // Magic zoom.
-        Camera::CamData dat      = cam->GetData();
-        float dist               = glm::distance(ZERO, dat.pos);
-        cam->m_orthographicScale = dist / 600.0f;
+        // Don't allow user camera to have magic zoom.
+        if (m_attachedCamera == NULL_HANDLE)
+        {
+          // Magic zoom.
+          Camera::CamData dat      = cam->GetData();
+          float dist               = glm::distance(ZERO, dat.pos);
+          cam->m_orthographicScale = dist / 600.0f;
+        }
       }
     }
 
     void EditorViewport::HandleDrop()
     {
       // Current scene
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene      = g_app->GetCurrentScene();
 
       // Asset drag and drop loading variables
       static LineBatch* boundingBox = nullptr;
@@ -635,15 +619,17 @@ namespace ToolKit
         DirectoryEntry dragEntry = *(const DirectoryEntry*) dragPayload->Data;
 
         // Check if the drag object is a mesh
-        Vec3 lastDragMeshPos = Vec3(0.0f);
+        Vec3 lastDragMeshPos     = Vec3(0.0f);
         if (dragEntry.m_ext == MESH || dragEntry.m_ext == SKINMESH)
         {
           // Load mesh
           LoadDragMesh(meshLoaded, dragEntry, &dwMesh, &boundingBox, currScene);
 
           // Show bounding box
-          lastDragMeshPos = CalculateDragMeshPosition(
-              meshLoaded, currScene, dwMesh, &boundingBox);
+          lastDragMeshPos = CalculateDragMeshPosition(meshLoaded,
+                                                      currScene,
+                                                      dwMesh,
+                                                      &boundingBox);
         }
 
         if (const ImGuiPayload* payload =
@@ -669,19 +655,22 @@ namespace ToolKit
           {
             MultiChoiceWindow::ButtonInfo openButton;
             openButton.m_name     = "Open";
-            openButton.m_callback = [entry]() -> void {
+            openButton.m_callback = [entry]() -> void
+            {
               String fullPath = entry.GetFullPath();
               g_app->OpenScene(fullPath);
             };
             MultiChoiceWindow::ButtonInfo linkButton;
             linkButton.m_name     = "Link";
-            linkButton.m_callback = [entry]() -> void {
+            linkButton.m_callback = [entry]() -> void
+            {
               String fullPath = entry.GetFullPath();
               g_app->LinkScene(fullPath);
             };
             MultiChoiceWindow::ButtonInfo mergeButton;
             mergeButton.m_name     = "Merge";
-            mergeButton.m_callback = [entry]() -> void {
+            mergeButton.m_callback = [entry]() -> void
+            {
               String fullPath = entry.GetFullPath();
               g_app->MergeScene(fullPath);
             };
@@ -700,27 +689,51 @@ namespace ToolKit
             EditorScene::PickData pd = currScene->PickObject(ray);
             if (pd.entity != nullptr && pd.entity->IsDrawable())
             {
-              MeshComponentPtr ms = pd.entity->GetComponent<MeshComponent>();
-              if (ms != nullptr)
+              // If there is a mesh component, update material component.
+              bool notPrefab = Prefab::GetPrefabRoot(pd.entity) == nullptr;
+
+              bool hasMesh =
+                  pd.entity->GetComponent<MeshComponent>() != nullptr;
+
+              if (notPrefab && hasMesh)
               {
                 // Load material once
                 String path =
                     ConcatPaths({dragEntry.m_rootPath,
                                  dragEntry.m_fileName + dragEntry.m_ext});
+
                 MaterialPtr material =
                     GetMaterialManager()->Create<Material>(path);
+
                 // Set material to material component
-                MaterialComponentPtr matPtr = pd.entity->GetMaterialComponent();
                 MultiMaterialPtr mmPtr =
                     pd.entity->GetComponent<MultiMaterialComponent>();
-                if (matPtr == nullptr && mmPtr == nullptr)
+
+                MaterialComponentPtr matPtr = pd.entity->GetMaterialComponent();
+
+                assert(!(matPtr != nullptr && mmPtr != nullptr) &&
+                       "Having both material component and multi material "
+                       "component on a single entity is not allowed.");
+
+                if (matPtr != nullptr)
                 {
-                  // Create a new material component
-                  MaterialComponent* matComp = new MaterialComponent();
-                  pd.entity->AddComponent(matComp);
-                  matPtr = pd.entity->GetMaterialComponent();
+                  matPtr->SetMaterialVal(material);
                 }
-                matPtr->m_localData[matPtr->MaterialIndex()] = material;
+
+                if (mmPtr != nullptr)
+                {
+                  // A better implementation would be finding the submesh that
+                  // ray intersects and updating the multi material slot
+                  // accordingly.
+                  pd.entity->RemoveComponent(mmPtr->m_id);
+                  MaterialComponent* matCom = new MaterialComponent();
+                  matCom->SetMaterialVal(material);
+                  pd.entity->AddComponent(matCom);
+                }
+              }
+              else if (!notPrefab)
+              {
+                g_app->m_statusMsg = "Failed. Target is Prefab.";
               }
             }
           }
@@ -729,8 +742,11 @@ namespace ToolKit
         ImGui::EndDragDropTarget();
       }
 
-      HandleDropMesh(
-          meshLoaded, meshAddedToScene, currScene, &dwMesh, &boundingBox);
+      HandleDropMesh(meshLoaded,
+                     meshAddedToScene,
+                     currScene,
+                     &dwMesh,
+                     &boundingBox);
     }
 
     void EditorViewport::DrawOverlays()
@@ -849,7 +865,7 @@ namespace ToolKit
       Vec3 lastDragMeshPos = Vec3(0.0f);
 
       // Find the point of the cursor in 3D coordinates
-      Ray ray = RayFromMousePosition();
+      Ray ray              = RayFromMousePosition();
       EntityIdArray ignoreList;
       if (meshLoaded)
       {
@@ -878,7 +894,7 @@ namespace ToolKit
 
       if (meshFound && boxMode)
       {
-        float firstY = lastDragMeshPos.y;
+        float firstY      = lastDragMeshPos.y;
         lastDragMeshPos.y -= dwMesh->GetAABB(false).min.y;
 
         if (firstY > lastDragMeshPos.y)

@@ -44,10 +44,6 @@ namespace ToolKit
     Renderer();
     ~Renderer();
 
-    void RenderScene(const ScenePtr scene,
-                     Viewport* viewport,
-                     const LightRawPtrArray& editorLights);
-
     /**
      * Renders given UILayer to given Viewport.
      * @param layer UILayer that will be rendered.
@@ -83,7 +79,6 @@ namespace ToolKit
                   const Mat4& transform = Mat4(1.0f));
 
     void SetTexture(ubyte slotIndx, uint textureId);
-    void ResetShadowMapBindings(ProgramPtr program);
 
     CubeMapPtr GenerateCubemapFrom2DTexture(TexturePtr texture,
                                             uint width,
@@ -128,6 +123,11 @@ namespace ToolKit
                               const Vec3& axis,
                               const float amount);
 
+    void ApplyAverageBlur(const TexturePtr source,
+                          RenderTargetPtr dest,
+                          const Vec3& axis,
+                          const float amount);
+
     /**
      * Just before the render, set the lens to fit aspect ratio to frame buffer.
      */
@@ -143,49 +143,6 @@ namespace ToolKit
     int GetMaxArrayTextureLayers();
 
    private:
-    void RenderEntities(
-        EntityRawPtrArray& entities,
-        Camera* cam,
-        Viewport* viewport,
-        const LightRawPtrArray& editorLights = LightRawPtrArray(),
-        SkyBase* sky                         = nullptr);
-
-    /**
-     * Extracts blended entites from given entity array.
-     * @param entities Entity array that the transparents will extracted from.
-     * @param blendedEntities Entity array that are going to be filled
-     * with transparents.
-     */
-    void GetTransparentEntites(EntityRawPtrArray& entities,
-                               EntityRawPtrArray& blendedEntities);
-
-    /**
-     * Renders the entities immediately. No sorting applied.
-     * @param entities All entities to render.
-     * @param cam Camera for rendering.
-     * @param zoom Zoom amount of camera.
-     * @param editorLights All lights.
-     */
-    void RenderOpaque(
-        EntityRawPtrArray entities,
-        Camera* cam,
-        const LightRawPtrArray& editorLights = LightRawPtrArray());
-
-    /**
-     * Sorts and renders entities. For double-sided blended entities first
-     * render back, than renders front.
-     * @param entities All entities to render.
-     * @param cam Camera for rendering.
-     * @param zoom Zoom amount of camera.
-     * @param editorLights All lights.
-     */
-    void RenderTransparent(
-        EntityRawPtrArray entities,
-        Camera* cam,
-        const LightRawPtrArray& editorLights = LightRawPtrArray());
-
-    void RenderSky(SkyBase* sky, Camera* cam);
-
     void Render2d(Surface* object, glm::ivec2 screenDimensions);
     void Render2d(SpriteAnimation* object, glm::ivec2 screenDimensions);
 
@@ -197,17 +154,6 @@ namespace ToolKit
      */
     void FindEnvironmentLight(Entity* entity);
 
-    void ShadowPass(const LightRawPtrArray& lights,
-                    const EntityRawPtrArray& entities);
-    void UpdateShadowMaps(const LightRawPtrArray& lights,
-                          const EntityRawPtrArray& entities);
-    void FilterShadowMaps(const LightRawPtrArray& lights);
-
-    void ApplyAverageBlur(const TexturePtr source,
-                          RenderTargetPtr dest,
-                          const Vec3& axis,
-                          const float amount);
-
     void SetProjectViewModel(Entity* ntt, Camera* cam);
     void BindProgram(ProgramPtr program);
     void LinkProgram(uint program, uint vertexP, uint fragmentP);
@@ -215,31 +161,27 @@ namespace ToolKit
     void FeedUniforms(ProgramPtr program);
     void FeedLightUniforms(ProgramPtr program);
 
-    void GenerateSSAOTexture(const EntityRawPtrArray& entities,
-                             Viewport* viewport);
-    void GenerateKernelAndNoiseForSSAOSamples(Vec3Array& ssaoKernel,
-                                              Vec2Array& ssaoNoise);
-
    public:
     uint m_totalFrameCount = 0;
     uint m_frameCount      = 0;
     UVec2 m_windowSize; //!< Application window size.
-    Vec4 m_clearColor             = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    MaterialPtr m_overrideMat     = nullptr;
-    bool m_overrideDiffuseTexture = false;
-    Camera* m_uiCamera            = nullptr;
+    Vec4 m_clearColor         = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    MaterialPtr m_overrideMat = nullptr;
+    Camera* m_uiCamera        = nullptr;
 
     bool m_renderOnlyLighting = false;
 
     typedef struct RHIConstants
     {
-      static constexpr ubyte textureSlotCount = 8;
+      static constexpr ubyte textureSlotCount       = 16;
 
-      static constexpr size_t maxLightsPerObject = 16;
+      static constexpr size_t maxLightsPerObject    = 16;
 
       static constexpr int shadowAtlasSlot          = 8;
       static constexpr int g_shadowAtlasTextureSize = 4096;
     } m_rhiSettings;
+
+    static constexpr float g_shadowBiasMultiplier = 0.0001f;
 
    private:
     uint m_currentProgram = 0;
@@ -255,9 +197,6 @@ namespace ToolKit
     TexturePtr m_shadowAtlas     = nullptr;
 
     uint m_textureSlots[RHIConstants::textureSlotCount];
-    int m_bindedShadowMapCount       = 0;
-    int m_dirAndSpotLightShadowCount = 0;
-    int m_pointLightShadowCount      = 0;
 
     std::unordered_map<String, ProgramPtr> m_programs;
     RenderState m_renderState;
@@ -274,8 +213,8 @@ namespace ToolKit
     MaterialPtr m_gaussianBlurMaterial = nullptr;
     MaterialPtr m_averageBlurMaterial  = nullptr;
 
-    FramebufferPtr m_copyFb    = nullptr;
-    MaterialPtr m_copyMaterial = nullptr;
+    FramebufferPtr m_copyFb            = nullptr;
+    MaterialPtr m_copyMaterial         = nullptr;
 
     int m_maxArrayTextureLayers = -1;
   };

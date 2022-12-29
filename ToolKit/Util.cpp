@@ -321,15 +321,9 @@ namespace ToolKit
 #endif
   }
 
-  void UnixifyPath(String& path)
-  {
-    ReplaceCharInPlace(path, '\\', '/');
-  }
+  void UnixifyPath(String& path) { ReplaceCharInPlace(path, '\\', '/'); }
 
-  void DosifyPath(String& path)
-  {
-    ReplaceCharInPlace(path, '/', '\\');
-  }
+  void DosifyPath(String& path) { ReplaceCharInPlace(path, '/', '\\'); }
 
   String ConcatPaths(const StringArray& entries)
   {
@@ -380,7 +374,7 @@ namespace ToolKit
       {
         String rel = path.substr(root.length() + 1);
         // Extract the root layer. Mesh, Texture ect...
-        exist = rel.find(GetPathSeparator());
+        exist      = rel.find(GetPathSeparator());
         if (exist != String::npos)
         {
           rel = rel.substr(exist + 1);
@@ -398,6 +392,29 @@ namespace ToolKit
     }
 
     return path;
+  }
+
+  TK_API bool IsDefaultResource(const String& path) 
+  { 
+    if (path._Starts_with("ToolKit"))
+    {
+      return true;
+    }
+
+    static const String defPath = DefaultPath();
+    if (path._Starts_with(defPath))
+    {
+      return true;
+    }
+
+    return false; 
+  }
+
+  String GetFileName(const String& path)
+  {
+    char sep = GetPathSeparator();
+    int i    = (int) path.find_last_of(sep) + 1;
+    return path.substr(i);
   }
 
   String CreatePathFromResourceType(const String& file, ResourceType type)
@@ -424,12 +441,12 @@ namespace ToolKit
 
     if (SupportedImageFormat(ext))
     {
-      return ResourceType::Texture;
-    }
+      if (ext == HDR)
+      {
+        return ResourceType::Hdri;
+      }
 
-    if (ext == HDR)
-    {
-      return ResourceType::Hdri;
+      return ResourceType::Texture;
     }
 
     if (ext == SHADER)
@@ -605,10 +622,7 @@ namespace ToolKit
 #endif
   }
 
-  String GetPathSeparatorAsStr()
-  {
-    return String() + GetPathSeparator();
-  }
+  String GetPathSeparatorAsStr() { return String() + GetPathSeparator(); }
 
   bool SupportedImageFormat(const String& ext)
   {
@@ -711,6 +725,20 @@ namespace ToolKit
     }
   }
 
+  TK_API int CountChar(const String& str, const char chr)
+  {
+    int cnt = 0;
+    for (char c : str)
+    {
+      if (c == chr)
+      {
+        cnt++;
+      }
+    }
+
+    return cnt;
+  }
+
   String ToLower(const String& str)
   {
     String lwr = str;
@@ -779,13 +807,13 @@ namespace ToolKit
     y      = glm::normalize(glm::cross(z, x));
 
     NormalizePlaneEquation(plane);
-    Vec3 o = plane.normal * plane.d;
+    Vec3 o      = plane.normal * plane.d;
 
     float hSize = size * 0.5f;
-    Vec3Array corners{o + x * hSize + y * hSize,
-                      o - x * hSize + y * hSize,
-                      o - x * hSize - y * hSize,
-                      o + x * hSize - y * hSize};
+    Vec3Array corners {o + x * hSize + y * hSize,
+                       o - x * hSize + y * hSize,
+                       o - x * hSize - y * hSize,
+                       o + x * hSize - y * hSize};
 
     LineBatch* obj = new LineBatch(corners, X_AXIS, DrawType::LineLoop, 5.0f);
     return obj;
@@ -864,7 +892,8 @@ namespace ToolKit
                  EntityRawPtrArray& roots,
                  Entity* child)
   {
-    auto AddUnique = [&roots](Entity* e) -> void {
+    auto AddUnique = [&roots](Entity* e) -> void
+    {
       assert(e != nullptr);
       bool unique = std::find(roots.begin(), roots.end(), e) == roots.end();
       if (unique)
@@ -951,64 +980,9 @@ namespace ToolKit
     return cpy;
   }
 
-  TK_API void StableSortByDistanceToCamera(EntityRawPtrArray& entities,
-                                           const Camera* cam)
-  {
-    std::function<bool(Entity*, Entity*)> sortFn = [cam](Entity* ntt1,
-                                                         Entity* ntt2) -> bool {
-      Vec3 camLoc = cam->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+  void* TKMalloc(size_t sz) { return malloc(sz); }
 
-      BoundingBox bb1 = ntt1->GetAABB(true);
-      float first     = glm::length2(bb1.GetCenter() - camLoc);
-
-      BoundingBox bb2 = ntt2->GetAABB(true);
-      float second    = glm::length2(bb2.GetCenter() - camLoc);
-
-      return second < first;
-    };
-
-    if (cam->IsOrtographic())
-    {
-      sortFn = [cam](Entity* ntt1, Entity* ntt2) -> bool {
-        float first =
-            ntt1->m_node->GetTranslation(TransformationSpace::TS_WORLD).z;
-
-        float second =
-            ntt2->m_node->GetTranslation(TransformationSpace::TS_WORLD).z;
-
-        return first < second;
-      };
-    }
-
-    std::stable_sort(entities.begin(), entities.end(), sortFn);
-  }
-
-  TK_API void StableSortByMaterialPriority(EntityRawPtrArray& entities)
-  {
-    std::stable_sort(
-        entities.begin(), entities.end(), [](Entity* a, Entity* b) -> bool {
-          MaterialComponentPtr matA = a->GetMaterialComponent();
-          MaterialComponentPtr matB = b->GetMaterialComponent();
-          if (matA && matB)
-          {
-            int pA = matA->GetMaterialVal()->GetRenderState()->priority;
-            int pB = matB->GetMaterialVal()->GetRenderState()->priority;
-            return pA > pB;
-          }
-
-          return false;
-        });
-  }
-
-  void* TKMalloc(size_t sz)
-  {
-    return malloc(sz);
-  }
-
-  void TKFree(void* m)
-  {
-    free(m);
-  }
+  void TKFree(void* m) { free(m); }
 
   int IndexOf(Entity* ntt, const EntityRawPtrArray& entities)
   {
@@ -1036,10 +1010,7 @@ namespace ToolKit
     return false;
   }
 
-  float MillisecToSec(float ms)
-  {
-    return ms / 1000.0f;
-  }
+  float MillisecToSec(float ms) { return ms / 1000.0f; }
 
   float GetElapsedMilliSeconds()
   {

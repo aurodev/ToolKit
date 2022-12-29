@@ -11,11 +11,7 @@ namespace ToolKit
   namespace Editor
   {
 
-    EditorRenderer::EditorRenderer()
-    {
-      m_editorScene = std::make_shared<EditorScene>();
-      InitRenderer();
-    }
+    EditorRenderer::EditorRenderer() { InitRenderer(); }
 
     EditorRenderer::EditorRenderer(const EditorRenderPassParams& params)
         : EditorRenderer()
@@ -31,9 +27,6 @@ namespace ToolKit
       }
       m_editorLights.clear();
       SafeDel(m_lightNode);
-
-      // Prevent entities to be destroyed.
-      m_editorScene->AccessEntityArray().clear();
     }
 
     void EditorRenderer::Render()
@@ -42,7 +35,17 @@ namespace ToolKit
 
       SetLitMode(m_params.LitMode);
 
-      m_scenePass.Render();
+      switch (m_params.LitMode)
+      {
+      case EditorLitMode::LightComplexity:
+      case EditorLitMode::Unlit:
+        m_singleMatRenderer.Render();
+        break;
+      default:
+        m_scenePass.Render();
+        m_bloomPass.Render();
+        break;
+      }
 
       SetLitMode(EditorLitMode::EditorLit);
 
@@ -51,6 +54,8 @@ namespace ToolKit
       OutlineSelecteds();
 
       m_gizmoPass.Render();
+
+      m_tonemapPass.Render();
 
       m_gammaPass.Render();
 
@@ -66,8 +71,7 @@ namespace ToolKit
       m_lightNode->OrphanSelf();
       m_camera->m_node->AddChild(m_lightNode);
 
-      Renderer* renderer       = GetRenderer();
-      m_overrideDiffuseTexture = renderer->m_overrideDiffuseTexture;
+      Renderer* renderer = GetRenderer();
 
       // Construct EditorScene
       EntityRawPtrArray editorEntities;
@@ -84,8 +88,10 @@ namespace ToolKit
 
         if (envCom != nullptr && ntt->GetType() != EntityType::Entity_Sky)
         {
-          editorEntities.push_back(CreateBoundingBoxDebugObject(
-              envCom->GetBBox(), g_environmentGizmoColor, 1.0f));
+          editorEntities.push_back(
+              CreateBoundingBoxDebugObject(envCom->GetBBox(),
+                                           g_environmentGizmoColor,
+                                           1.0f));
         }
 
         if (app->m_showSelectionBoundary && ntt->IsDrawable())
@@ -135,12 +141,9 @@ namespace ToolKit
       grid->UpdateShaderParams();
       editorEntities.push_back(grid);
 
-      // Nothing lit, so no lights necessary.
-      m_editorScene->AccessEntityArray() = editorEntities;
-
-      LightRawPtrArray lights = m_params.LitMode == EditorLitMode::FullyLit
-                                    ? scene->GetLights()
-                                    : m_editorLights;
+      LightRawPtrArray lights = m_params.LitMode == EditorLitMode::EditorLit
+                                    ? m_editorLights
+                                    : scene->GetLights();
 
       EditorViewport* viewport =
           static_cast<EditorViewport*>(m_params.Viewport);
@@ -148,29 +151,45 @@ namespace ToolKit
       // Editor pass.
       m_editorPass.m_params.Cam              = viewport->GetCamera();
       m_editorPass.m_params.FrameBuffer      = viewport->m_framebuffer;
-      m_editorPass.m_params.Scene            = m_editorScene;
+      m_editorPass.m_params.Entities         = editorEntities;
       m_editorPass.m_params.ClearFrameBuffer = false;
 
-      // Shadow pass.
-      m_scenePass.m_params.shadowPassParams.Entities = scene->GetEntities();
-      m_scenePass.m_params.shadowPassParams.Lights   = lights;
+      // Scene pass.
+      m_scenePass.m_params.Cam               = m_camera;
+      m_scenePass.m_params.Lights            = lights;
+      m_scenePass.m_params.MainFramebuffer   = viewport->m_framebuffer;
+      m_scenePass.m_params.Scene             = scene;
 
-      // Scene Pass.
-      m_scenePass.m_params.renderPassParams.Scene = app->GetCurrentScene();
-      m_scenePass.m_params.renderPassParams.LightOverride = lights;
-      m_scenePass.m_params.renderPassParams.Cam           = m_camera;
-      m_scenePass.m_params.renderPassParams.FrameBuffer =
+      // Bloom pass
+      m_bloomPass.m_params.FrameBuffer       = viewport->m_framebuffer;
+      m_bloomPass.m_params.intensity =
+          Main::GetInstance()->m_engineSettings.Graphics.bloomIntensity;
+      m_bloomPass.m_params.minThreshold =
+          Main::GetInstance()->m_engineSettings.Graphics.bloomThreshold;
+      m_bloomPass.m_params.iterationCount =
+          Main::GetInstance()->m_engineSettings.Graphics.bloomIterationCount;
+
+      // Light Complexity pass
+      m_singleMatRenderer.m_params.ForwardParams.Cam              = m_camera;
+      m_singleMatRenderer.m_params.ForwardParams.Lights           = lights;
+      m_singleMatRenderer.m_params.ForwardParams.ClearFrameBuffer = true;
+      m_singleMatRenderer.m_params.ForwardParams.Entities =
+          scene->GetEntities();
+      m_singleMatRenderer.m_params.ForwardParams.FrameBuffer =
           viewport->m_framebuffer;
 
+      m_tonemapPass.m_params.FrameBuffer = viewport->m_framebuffer;
+      m_tonemapPass.m_params.Method      = m_params.tonemapping;
+
       // Gamma Pass.
-      m_gammaPass.m_params.FrameBuffer = viewport->m_framebuffer;
+      m_gammaPass.m_params.FrameBuffer   = viewport->m_framebuffer;
       // TODO: Read it from engine settings.
-      m_gammaPass.m_params.Gamma       = 2.2f;
+      m_gammaPass.m_params.Gamma         = 2.2f;
 
       // Gizmo Pass.
-      m_gizmoPass.m_params.Viewport = viewport;
+      m_gizmoPass.m_params.Viewport      = viewport;
 
-      EditorBillboardBase* anchorGizmo = nullptr;
+      EditorBillboardBase* anchorGizmo   = nullptr;
       if (viewport->GetType() == Window::Type::Viewport2d)
       {
         anchorGizmo = (EditorBillboardBase*) app->m_anchor.get();
@@ -180,8 +199,6 @@ namespace ToolKit
 
     void EditorRenderer::PostRender()
     {
-      GetRenderer()->m_overrideDiffuseTexture = m_overrideDiffuseTexture;
-
       App* app = m_params.App;
       for (Entity* dbgObj : app->m_perFrameDebugObjects)
       {
@@ -197,29 +214,31 @@ namespace ToolKit
       switch (mode)
       {
       case EditorLitMode::EditorLit:
-        renderer->m_overrideMat = nullptr;
-        break;
-      case EditorLitMode::Unlit:
-        renderer->m_overrideMat = m_unlitOverride;
-        break;
       case EditorLitMode::FullyLit:
-        renderer->m_overrideMat = nullptr;
-        break;
-      case EditorLitMode::LightComplexity:
-        renderer->m_overrideMat = m_lightComplexityOverride;
-        break;
-      case EditorLitMode::LightingOnly:
-        renderer->m_overrideMat        = m_lightingOnlyOverride;
         renderer->m_renderOnlyLighting = false;
         break;
-      default:
+      case EditorLitMode::LightingOnly:
+        renderer->m_renderOnlyLighting = true;
+        break;
+      case EditorLitMode::Unlit:
+        m_singleMatRenderer.m_params.OverrideFragmentShader =
+            GetShaderManager()->Create<Shader>(
+                ShaderPath("unlitFrag.shader", true));
+        renderer->m_renderOnlyLighting = false;
+        break;
+      case EditorLitMode::LightComplexity:
+        m_singleMatRenderer.m_params.OverrideFragmentShader =
+            GetShaderManager()->Create<Shader>(
+                ShaderPath("lightComplexity.shader", true));
+        renderer->m_renderOnlyLighting = false;
         break;
       }
     }
+
     void EditorRenderer::CreateEditorLights(LightRawPtrArray& list,
                                             Node** parentNode)
     {
-      *parentNode = new Node();
+      *parentNode             = new Node();
 
       float intensity         = 1.5f;
       DirectionalLight* light = new DirectionalLight();
@@ -255,15 +274,6 @@ namespace ToolKit
       CreateEditorLights(m_editorLights, &m_lightNode);
 
       // Create render mode materials.
-      m_lightComplexityOverride = std::make_shared<Material>();
-      m_lightComplexityOverride->m_fragmentShader =
-          GetShaderManager()->Create<Shader>(
-              ShaderPath("lightComplexity.shader", true));
-      m_lightComplexityOverride->Init();
-
-      m_lightingOnlyOverride = GetMaterialManager()->GetCopyOfSolidMaterial();
-      m_lightingOnlyOverride->Init();
-
       m_unlitOverride = GetMaterialManager()->GetCopyOfUnlitMaterial();
       m_unlitOverride->Init();
     }
@@ -276,9 +286,10 @@ namespace ToolKit
       }
       EntityRawPtrArray selecteds = m_selecteds; // Copy
 
-      Viewport* viewport = m_params.Viewport;
-      auto RenderFn      = [this, viewport](const EntityRawPtrArray& selection,
-                                       const Vec4& color) -> void {
+      Viewport* viewport          = m_params.Viewport;
+      auto RenderFn = [this, viewport](const EntityRawPtrArray& selection,
+                                       const Vec4& color) -> void
+      {
         if (selection.empty())
         {
           return;
@@ -304,7 +315,8 @@ namespace ToolKit
           if (billboard)
           {
             static_cast<Billboard*>(billboard)->LookAt(
-                viewport->GetCamera(), viewport->GetBillboardScale());
+                viewport->GetCamera(),
+                viewport->GetBillboardScale());
             m_outlinePass.m_params.DrawList.push_back(billboard);
           }
         }
@@ -357,8 +369,9 @@ namespace ToolKit
             EditorBillboardBase::BillboardType::Rotate)
         {
           Mat4 ts = bb->m_node->GetTransform();
-          m_depthMaskSphere->m_node->SetTransform(
-              ts, TransformationSpace::TS_WORLD, false);
+          m_depthMaskSphere->m_node->SetTransform(ts,
+                                                  TransformationSpace::TS_WORLD,
+                                                  false);
 
           renderer->ColorMask(false, false, false, false);
           renderer->Render(m_depthMaskSphere.get(), m_camera);
@@ -398,10 +411,68 @@ namespace ToolKit
       }
     }
 
-    void GizmoPass::PostRender()
+    void GizmoPass::PostRender() { Pass::PostRender(); }
+
+    SingleMatForwardRenderPass::SingleMatForwardRenderPass()
+        : ForwardRenderPass()
     {
-      Pass::PostRender();
+      m_overrideMat = std::make_shared<Material>();
     }
 
+    SingleMatForwardRenderPass::SingleMatForwardRenderPass(
+        const SingleMatForwardRenderPassParams& params)
+        : SingleMatForwardRenderPass()
+    {
+      m_params = params;
+    }
+
+    void SingleMatForwardRenderPass::Render()
+    {
+      PreRender();
+
+      EntityRawPtrArray translucentDrawList;
+      SeperateTranslucentEntities(m_params.ForwardParams.Entities,
+                                  translucentDrawList);
+
+      Renderer* renderer = GetRenderer();
+      for (Entity* ntt : m_params.ForwardParams.Entities)
+      {
+        LightRawPtrArray lightList = m_params.ForwardParams.Lights;
+        ForwardRenderPass::CullLightList(ntt, lightList);
+
+        MaterialPtr mat         = ntt->GetRenderMaterial();
+        renderer->m_overrideMat = std::make_shared<Material>();
+        renderer->m_overrideMat->SetRenderState(mat->GetRenderState());
+        renderer->m_overrideMat->m_vertexShader = mat->m_vertexShader;
+        renderer->m_overrideMat->m_fragmentShader =
+            m_params.OverrideFragmentShader;
+        renderer->m_overrideMat->m_diffuseTexture  = mat->m_diffuseTexture;
+        renderer->m_overrideMat->m_emissiveTexture = mat->m_emissiveTexture;
+        renderer->m_overrideMat->m_emissiveColor   = mat->m_emissiveColor;
+        renderer->m_overrideMat->m_cubeMap         = mat->m_cubeMap;
+        renderer->m_overrideMat->m_color           = mat->m_color;
+        renderer->m_overrideMat->m_alpha           = mat->m_alpha;
+        renderer->m_overrideMat->Init();
+
+        renderer->Render(ntt, m_params.ForwardParams.Cam, lightList);
+      }
+
+      RenderTranslucent(translucentDrawList,
+                        m_camera,
+                        m_params.ForwardParams.Lights);
+
+      PostRender();
+    }
+
+    void SingleMatForwardRenderPass::PreRender()
+    {
+      ForwardRenderPass::m_params = m_params.ForwardParams;
+      ForwardRenderPass::PreRender();
+      Renderer* renderer = GetRenderer();
+
+      m_overrideMat->UnInit();
+      m_overrideMat->m_fragmentShader = m_params.OverrideFragmentShader;
+      m_overrideMat->Init();
+    };
   } // namespace Editor
 } // namespace ToolKit

@@ -13,9 +13,11 @@
   <ItemGroup>
     <ClCompile Include="Animation.cpp" />
     <ClCompile Include="Audio.cpp" />
+    <ClCompile Include="BinPack2D.cpp" />
     <ClCompile Include="Canvas.cpp" />
     <ClCompile Include="Component.cpp" />
     <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="DataTexture.cpp" />
     <ClCompile Include="DirectionComponent.cpp" />
     <ClCompile Include="Drawable.cpp" />
     <ClCompile Include="Entity.cpp" />
@@ -30,6 +32,7 @@
     <ClCompile Include="ParameterBlock.cpp" />
     <ClCompile Include="Pass.cpp" />
     <ClCompile Include="PluginManager.cpp" />
+    <ClCompile Include="PostProcessPass.cpp" />
     <ClCompile Include="Prefab.cpp" />
     <ClCompile Include="Primative.cpp" />
     <ClCompile Include="Renderer.cpp" />
@@ -57,8 +60,10 @@
   <ItemGroup>
     <ClInclude Include="Animation.h" />
     <ClInclude Include="Audio.h" />
+    <ClInclude Include="BinPack2D.h" />
     <ClInclude Include="Canvas.h" />
     <ClInclude Include="Component.h" />
+    <ClInclude Include="DataTexture.h" />
     <ClInclude Include="DebugNew.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="DirectionComponent.h" />
@@ -68,6 +73,7 @@
     <ClInclude Include="FileManager.h" />
     <ClInclude Include="Framebuffer.h" />
     <ClInclude Include="Pass.h" />
+    <ClInclude Include="PostProcessPass.h" />
     <ClInclude Include="ShaderReflectionCache.h" />
     <ClInclude Include="Light.h" />
     <ClInclude Include="Logger.h" />

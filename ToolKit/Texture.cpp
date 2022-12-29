@@ -28,10 +28,7 @@ namespace ToolKit
     m_initiated = true;
   }
 
-  Texture::~Texture()
-  {
-    UnInit();
-  }
+  Texture::~Texture() { UnInit(); }
 
   void Texture::Load()
   {
@@ -42,16 +39,22 @@ namespace ToolKit
 
     if (m_floatFormat)
     {
-      if ((m_imagef = GetFileManager()->GetHdriFile(
-               GetFile().c_str(), &m_width, &m_height, &m_bytePP, 3)))
+      if ((m_imagef = GetFileManager()->GetHdriFile(GetFile().c_str(),
+                                                    &m_width,
+                                                    &m_height,
+                                                    &m_bytePP,
+                                                    3)))
       {
         m_loaded = true;
       }
     }
     else
     {
-      if ((m_image = GetFileManager()->GetImageFile(
-               GetFile(), &m_width, &m_height, &m_bytePP, 4)))
+      if ((m_image = GetFileManager()->GetImageFile(GetFile(),
+                                                    &m_width,
+                                                    &m_height,
+                                                    &m_bytePP,
+                                                    4)))
       {
         m_loaded = true;
       }
@@ -65,10 +68,16 @@ namespace ToolKit
       return;
     }
 
-    // Sanity check
-    if ((m_image == nullptr && m_imagef == nullptr) || m_width <= 0 ||
-        m_height <= 0)
+    // Sanity checks
+    if ((m_image == nullptr && m_imagef == nullptr))
     {
+      assert(0 && "No texture data.");
+      return;
+    }
+
+    if (m_width <= 0 || m_height <= 0)
+    {
+      assert(0 && "Zero texture size.");
       return;
     }
 
@@ -89,6 +98,7 @@ namespace ToolKit
                    GL_RGB,
                    GL_FLOAT,
                    m_imagef);
+
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     }
     else
@@ -102,9 +112,12 @@ namespace ToolKit
                    GL_RGBA,
                    GL_UNSIGNED_BYTE,
                    m_image);
+
       glGenerateMipmap(GL_TEXTURE_2D);
-      glTexParameteri(
-          GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+
+      glTexParameteri(GL_TEXTURE_2D,
+                      GL_TEXTURE_MIN_FILTER,
+                      GL_LINEAR_MIPMAP_LINEAR);
     }
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -117,6 +130,7 @@ namespace ToolKit
       glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
     }
 #endif // TK_GL_ES_3_0
+
     if (flushClientSideArray)
     {
       Clear();
@@ -143,14 +157,9 @@ namespace ToolKit
     m_loaded = false;
   }
 
-  CubeMap::CubeMap() : Texture()
-  {
-  }
+  CubeMap::CubeMap() : Texture() {}
 
-  CubeMap::CubeMap(String file) : Texture()
-  {
-    SetFile(file);
-  }
+  CubeMap::CubeMap(String file) : Texture() { SetFile(file); }
 
   CubeMap::CubeMap(uint cubemapId)
   {
@@ -158,10 +167,7 @@ namespace ToolKit
     m_initiated = true;
   }
 
-  CubeMap::~CubeMap()
-  {
-    UnInit();
-  }
+  CubeMap::~CubeMap() { UnInit(); }
 
   void CubeMap::Load()
   {
@@ -205,8 +211,9 @@ namespace ToolKit
       }
 
       String name = file + postfix;
-      if ((m_images[i] = GetFileManager()->GetImageFile(
-               name, &m_width, &m_height, &m_bytePP, 0)))
+      if ((m_images[i] =
+               GetFileManager()
+                   ->GetImageFile(name, &m_width, &m_height, &m_bytePP, 0)))
       {
         GetLogger()->Log("Missing file: " + name);
         GetLogger()->Log(
@@ -266,10 +273,14 @@ namespace ToolKit
                    m_images[i]);
     }
 
-    glTexParameteri(
-        GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(
-        GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP,
+                    GL_TEXTURE_MIN_FILTER,
+                    GL_LINEAR_MIPMAP_LINEAR);
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP,
+                    GL_TEXTURE_MAG_FILTER,
+                    GL_LINEAR_MIPMAP_LINEAR);
+
     glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
 
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -305,8 +316,8 @@ namespace ToolKit
 
   Hdri::Hdri()
   {
-    m_floatFormat = true;
-    m_exposure    = 1.0f;
+    m_floatFormat               = true;
+    m_exposure                  = 1.0f;
 
     m_texToCubemapMat           = std::make_shared<Material>();
     m_cubemapToIrradiancemapMat = std::make_shared<Material>();
@@ -314,15 +325,9 @@ namespace ToolKit
     m_equirectangularTexture = std::make_shared<Texture>(static_cast<uint>(0));
   }
 
-  Hdri::Hdri(const String& file) : Hdri()
-  {
-    SetFile(file);
-  }
+  Hdri::Hdri(const String& file) : Hdri() { SetFile(file); }
 
-  Hdri::~Hdri()
-  {
-    UnInit();
-  }
+  Hdri::~Hdri() { UnInit(); }
 
   void Hdri::Load()
   {
@@ -361,8 +366,10 @@ namespace ToolKit
         1.0f);
 
     // Generate irradience cubemap images
-    m_irradianceCubemap = GetRenderer()->GenerateIrradianceCubemap(
-        m_cubemap, m_width / 64, m_width / 64);
+    m_irradianceCubemap =
+        GetRenderer()->GenerateIrradianceCubemap(m_cubemap,
+                                                 m_width / 64,
+                                                 m_width / 64);
   }
 
   void Hdri::UnInit()
@@ -375,104 +382,9 @@ namespace ToolKit
     Texture::UnInit();
   }
 
-  bool Hdri::IsTextureAssigned()
-  {
-    return (GetFile().size() != 0);
-  }
+  bool Hdri::IsTextureAssigned() { return !GetFile().empty(); }
 
-  CubeMapPtr Hdri::GetCubemap()
-  {
-    return m_cubemap;
-  }
-
-  CubeMapPtr Hdri::GetIrradianceCubemap()
-  {
-    return m_irradianceCubemap;
-  }
-
-  uint Hdri::GenerateCubemapBuffers(struct CubeMapSettings cubeMapSettings)
-  {
-    GLint currId;
-    glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &currId);
-
-    // Create buffers for cubemap textures
-    GLuint textureId;
-    glGenTextures(1, &textureId);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, textureId);
-
-    for (unsigned int i = 0; i < 6; ++i)
-    {
-      glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
-                   cubeMapSettings.level,
-                   cubeMapSettings.internalformat,
-                   cubeMapSettings.width,
-                   cubeMapSettings.height,
-                   0,
-                   cubeMapSettings.format,
-                   cubeMapSettings.type,
-                   cubeMapSettings.pixels);
-    }
-
-    glTexParameteri(
-        GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, cubeMapSettings.wrapSet);
-    glTexParameteri(
-        GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, cubeMapSettings.wrapSet);
-    glTexParameteri(
-        GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, cubeMapSettings.wrapSet);
-    glTexParameteri(
-        GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, cubeMapSettings.filterSet);
-    glTexParameteri(
-        GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, cubeMapSettings.filterSet);
-
-    glBindTexture(GL_TEXTURE_CUBE_MAP, currId);
-
-    return textureId;
-  }
-
-  void Hdri::RenderToCubeMap(GLuint fbo,
-                             const Mat4 views[6],
-                             CameraPtr cam,
-                             uint cubeMapTextureId,
-                             int width,
-                             int height,
-                             MaterialPtr mat)
-  {
-    GLint lastFBO;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &lastFBO);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    // Render cube from 6 different angles for 6 images of cubemap
-    for (int i = 0; i < 6; ++i)
-    {
-      Vec3 pos;
-      Quaternion rot;
-      Vec3 sca;
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
-
-      cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
-      cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
-      cam->m_node->SetScale(sca);
-
-      glFramebufferTexture2D(GL_FRAMEBUFFER,
-                             GL_COLOR_ATTACHMENT0,
-                             GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
-                             cubeMapTextureId,
-                             0);
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      GetRenderer()->SetViewportSize(width, height);
-
-      CullingType currType            = mat->GetRenderState()->cullMode;
-      mat->GetRenderState()->cullMode = CullingType::TwoSided;
-      GetRenderer()->DrawCube(cam.get(), mat);
-      mat->GetRenderState()->cullMode = currType;
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, lastFBO);
-  }
-
-  RenderTarget::RenderTarget() : Texture()
-  {
-  }
+  RenderTarget::RenderTarget() : Texture() {}
 
   RenderTarget::RenderTarget(uint width,
                              uint height,
@@ -484,9 +396,7 @@ namespace ToolKit
     m_settings = settings;
   }
 
-  void RenderTarget::Load()
-  {
-  }
+  void RenderTarget::Load() {}
 
   RenderTarget::RenderTarget(Texture* texture)
   {
@@ -563,18 +473,24 @@ namespace ToolKit
                      m_settings.Layers);
     }
 
-    glTexParameteri(
-        (int) m_settings.Target, GL_TEXTURE_WRAP_S, (int) m_settings.WarpS);
-    glTexParameteri(
-        (int) m_settings.Target, GL_TEXTURE_WRAP_T, (int) m_settings.WarpT);
+    glTexParameteri((int) m_settings.Target,
+                    GL_TEXTURE_WRAP_S,
+                    (int) m_settings.WarpS);
+
+    glTexParameteri((int) m_settings.Target,
+                    GL_TEXTURE_WRAP_T,
+                    (int) m_settings.WarpT);
+
     if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {
-      glTexParameteri(
-          (int) m_settings.Target, GL_TEXTURE_WRAP_R, (int) m_settings.WarpR);
+      glTexParameteri((int) m_settings.Target,
+                      GL_TEXTURE_WRAP_R,
+                      (int) m_settings.WarpR);
     }
     glTexParameteri((int) m_settings.Target,
                     GL_TEXTURE_MIN_FILTER,
                     (int) m_settings.MinFilter);
+
     glTexParameteri((int) m_settings.Target,
                     GL_TEXTURE_MAG_FILTER,
                     (int) m_settings.MagFilter);
@@ -609,14 +525,9 @@ namespace ToolKit
     return m_settings;
   }
 
-  TextureManager::TextureManager()
-  {
-    m_type = ResourceType::Texture;
-  }
+  TextureManager::TextureManager() { m_type = ResourceType::Texture; }
 
-  TextureManager::~TextureManager()
-  {
-  }
+  TextureManager::~TextureManager() {}
 
   bool TextureManager::CanStore(ResourceType t)
   {
@@ -664,5 +575,4 @@ namespace ToolKit
       return TexturePath("default.png", true);
     }
   }
-
 } // namespace ToolKit
